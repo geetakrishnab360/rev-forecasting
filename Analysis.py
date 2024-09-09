@@ -361,26 +361,43 @@ def calculate_current_vs_act_error(eff_probabilities):
     return agg_df["Current Vs Act (%Error)"].mean()
 
 
-def optimize_eff_probability():
+def optimize_eff_probability(max_iter, progress_bar, progress_text):
     initial_guess = st.session_state['cohort_df']['eff_probability'].values
     bounds = [(0, 1) for _ in range(len(initial_guess))]
     print("Before optimization: ", initial_guess)
     print(calculate_current_vs_act_error(initial_guess))
-    result = minimize(calculate_current_vs_act_error, initial_guess, bounds=bounds, method='L-BFGS-B',
-                      options={
-                          'maxiter': 5,  # Increase the number of iterations
-                          'ftol': 1e-2,  # Adjust the tolerance for convergence
-                          'disp': True  # Display convergence messages
-                      })
+
+    def progress_callback(xk):
+        progress = min(1.0, progress_callback.iteration / max_iter)
+        progress_bar.progress(progress)
+        progress_text.text(f"Optimization progress: {int(progress * 100)}%")
+        progress_callback.iteration += 1
+
+    progress_callback.iteration = 0
+
+    result = minimize(
+        calculate_current_vs_act_error,
+        initial_guess,
+        bounds=bounds,
+        method='L-BFGS-B',
+        options={
+            'maxiter': max_iter,
+            'ftol': 1e-4,
+            'disp': True
+        },
+        callback=progress_callback
+    )
 
     if result.success:
         optimized_eff_probabilities = result.x
         print("After optimization: ", optimized_eff_probabilities)
         st.session_state['cohort_df']['eff_probability'] = optimized_eff_probabilities
-        # st.write(st.session_state['cohort_df'])
         st.success("Optimization successful!")
     else:
         st.error("Optimization failed")
+
+    progress_bar.progress(1.0)
+    progress_text.text("Optimization complete")
 
 
 with open("./styles.css") as f:
@@ -548,14 +565,16 @@ with main_pane:
             type="primary",
         )
 
-        st.button(
-            "Optimize Probabilities",
-            on_click=optimize_eff_probability,
-            disabled=not st.session_state.get("update_probabilities_clicked", False),
-            type="secondary",
-        )
+        max_iter = st.number_input("Max Iterations", min_value=1, value=10, step=1, key="max_iter",
+                                   label_visibility="collapsed")
+        if st.button("Optimize Probabilities", disabled=not st.session_state.get("update_probabilities_clicked", False),
+                     type="secondary"):
+            progress_bar = st.progress(0)
+            progress_text = st.empty()
+            optimize_eff_probability(max_iter, progress_bar, progress_text)
 
-        # Experiment Aggregated results
+        progress_bar = st.progress(0)
+        progress_text = st.empty()
 
     st.divider()
     with st.container():
