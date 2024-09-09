@@ -1,0 +1,90 @@
+*{
+    padding: 0;
+    margin: 0;
+}
+
+div.stApp{
+    margin-left: 20px;
+}
+
+.main-header {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0;
+    margin: 0 20px;    
+}
+
+.main-header  h1 {
+    font-size: 2rem;
+}
+
+.logo {
+    max-height: 72px;
+    /* max-width: 300px; */
+    object-fit: cover;
+}
+
+
+header {
+    display: none !important;
+}
+
+.stAppViewBlockContainer {
+    padding: 0;
+    margin: 0;
+    height: 100vh !important;
+}
+
+div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type {
+    /* background-color: aqua; */
+}
+
+div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type >div>div>div {
+    flex-wrap: nowrap;
+}
+
+div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type >div>div>div> div[data-testid='column']:nth-child(1),
+div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type >div>div>div> div[data-testid='column']:nth-child(3){
+    border: 1px black solid;
+    border-radius: 10px;
+    margin: 0 10px;
+    box-shadow: 2px 4px 4px 4px rgba(0,0,0,0.1);
+    max-height: 95vh;
+    position:fixed;
+    overflow-y: scroll;
+    transform: translateY(-15px);
+    
+}
+
+div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type >div>div>div> div[data-testid='column']:nth-child(1),
+div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type >div>div>div> div[data-testid='column']:nth-child(2),
+div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type >div>div>div> div[data-testid='column']:nth-child(3) {
+    min-height: 80vh;
+    padding: 30px;
+}
+
+div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type >div>div>div> div[data-testid='column']:nth-child(2) {
+    max-width: 60%;
+    position: absolute;
+    left : 30%;
+}
+
+
+/* div.stSelectbox {
+    padding: 10px;
+} */
+
+.date-period-text {
+    font-weight: bold;
+}
+
+
+div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type >div>div>div> div[data-testid='column']:nth-child(3){
+    right:0;
+}
+
+div.card {
+    background-color: aqua;
+}
