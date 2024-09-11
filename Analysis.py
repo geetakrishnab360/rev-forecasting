@@ -29,6 +29,9 @@ from db import (
 
 from components import set_header
 import numpy as np
+import warnings
+
+warnings.filterwarnings("ignore")
 
 # from db import fetch_experiment
 # from data_utils import convert_to_cohort_df
@@ -43,8 +46,8 @@ create_database()
 
 def enable_save_experiment():
     st.session_state["disable_save_experiment"] = (
-        len(st.session_state["experiment"].strip()) == 0
-        or len(st.session_state["cohort_df"]) == 0
+            len(st.session_state["experiment"].strip()) == 0
+            or len(st.session_state["cohort_df"]) == 0
     )
 
 
@@ -162,12 +165,9 @@ def cohort_generate_forecast(experiment_name="Current"):
     )
 
     st.session_state["forecast_results"]["Current"] = forecast_results.copy()
-    st.session_state["update_probabilities_clicked"] = (
-        True  # Set to True when button is clicked
-    )
+    st.session_state["update_probabilities_clicked"] = True
 
 
-# Initialize the session state variable if not already present
 if "update_probabilities_clicked" not in st.session_state:
     st.session_state["update_probabilities_clicked"] = False
 
@@ -183,19 +183,78 @@ def save_experiment_to_db():
     st.session_state["all_experiments"] = fetch_all_experiments("karthik")
 
 
+# def cohorts_update(selected_features):
+#     if len(selected_features) == 0:
+#         st.session_state["cohort_df"] = pd.DataFrame()
+#         return
+#     cohort_df = (
+#         st.session_state["data_df"][selected_features]
+#         .drop_duplicates()
+#         .reset_index(drop=True)
+#     )
+#
+#     num_cohorts = cohort_df.shape[0]
+#     cohort_df["cohort"] = [f"cohort {i}" for i in range(1, num_cohorts + 1)]
+#     # st.write("Before adding prob", cohort_df)
+#     if "deal_stage" in selected_features:
+#         deal_stage_and_probability_dict = (
+#             st.session_state["data_df"]
+#             .set_index("deal_stage")["deal_probability"]
+#             .to_dict()
+#         )
+#         cohort_df["eff_probability"] = cohort_df["deal_stage"].map(
+#             deal_stage_and_probability_dict
+#         )
+#     else:
+#         selected_features_and_probability = st.session_state["data_df"][
+#             selected_features + ["final_probability"]
+#             ]
+#         t = (
+#             selected_features_and_probability.groupby(
+#                 selected_features, dropna=False
+#             )
+#             .final_probability.mean()
+#             .reset_index()
+#         )
+#         cohort_df = cohort_df.merge(t, on=selected_features, how="left")
+#         cohort_df.rename(
+#             columns={"final_probability": "eff_probability"}, inplace=True
+#         )
+#
+#     st.session_state["cohort_df"] = cohort_df[
+#         ["cohort", *selected_features, "eff_probability"]
+#     ]
+#     st.session_state["cohort_df"] = st.session_state["cohort_df"].fillna(
+#         "None"
+#     )
+#     st.session_state["disable_calculations"] = False
+#     st.session_state["cohort_information"]["Current"] = {}
+#     st.session_state["cohort_information"]["Current"]["cohort_df"] = (
+#         st.session_state["cohort_df"].copy()
+#     )
+#     st.session_state["cohort_information"]["Current"][
+#         "cohort_selected_features"
+#     ] = selected_features.copy()
+#     enable_save_experiment()
 def cohorts_update(selected_features):
     if len(selected_features) == 0:
         st.session_state["cohort_df"] = pd.DataFrame()
         return
-    cohort_df = (
-        st.session_state["data_df"][selected_features]
-        .drop_duplicates()
-        .reset_index(drop=True)
-    )
 
+    # Create a cohort for rows where deal_probability is not equal to effective_probability
+    data_df = st.session_state["data_df"].copy()
+    data_df["cohort"] = "cohort 0"
+    cohort_1 = data_df[data_df["deal_probability"] != data_df["effective_probability"]]
+    cohort_1["cohort"] = "cohort 1"
+
+    # Remove these rows from the main DataFrame
+    data_df = data_df[data_df["deal_probability"] == data_df["effective_probability"]]
+
+    # Create cohorts based on selected features
+    cohort_df = data_df[selected_features].drop_duplicates().reset_index(drop=True)
     num_cohorts = cohort_df.shape[0]
-    cohort_df["cohort"] = [f"cohort {i}" for i in range(1, num_cohorts + 1)]
-    # st.write("Before adding prob", cohort_df)
+    cohort_df["cohort"] = [f"cohort {i+2}" for i in range(num_cohorts)]
+
     if "deal_stage" in selected_features:
         deal_stage_and_probability_dict = (
             st.session_state["data_df"]
@@ -220,6 +279,12 @@ def cohorts_update(selected_features):
         cohort_df.rename(
             columns={"final_probability": "eff_probability"}, inplace=True
         )
+    c1 = cohort_1[['final_probability', 'cohort']].copy()
+    c1['eff_probability'] = c1['final_probability'].groupby(c1['cohort']).transform('mean')
+    c1 = c1.drop_duplicates(subset=['cohort'])
+    c1[selected_features] = '-'
+    # Combine cohort 1 with other cohorts
+    cohort_df = pd.concat([c1, cohort_df], ignore_index=True)
 
     st.session_state["cohort_df"] = cohort_df[
         ["cohort", *selected_features, "eff_probability"]
@@ -237,13 +302,13 @@ def cohorts_update(selected_features):
     ] = selected_features.copy()
     enable_save_experiment()
 
-
 def allow_calculation():
     st.session_state["disable_calculations"] = False
 
 
 def calculate_current_vs_act_error(eff_probabilities, cohorts, actuals):
-    st.session_state["cohort_df"]["eff_probability"] = eff_probabilities
+    selected_cohort_df = st.session_state["cohort_df"][st.session_state["cohort_df"]["selected"]].copy()
+    selected_cohort_df["eff_probability"] = eff_probabilities
     prob_map = {c: p for c, p in zip(cohorts, eff_probabilities)}
     st.session_state["active_df"]["final_probability"] = (
         st.session_state["active_df"].cohort.map(prob_map).fillna(0.0)
@@ -268,6 +333,7 @@ def calculate_current_vs_act_error(eff_probabilities, cohorts, actuals):
 
 
 def optimize_eff_probability(max_iter, progress_bar, progress_text):
+    selected_cohort_df = st.session_state["cohort_df"][st.session_state["cohort_df"]["selected"]].copy()
 
     st.session_state["active_df"] = st.session_state["data_df"].copy()
     st.session_state["active_df"][
@@ -280,7 +346,7 @@ def optimize_eff_probability(max_iter, progress_bar, progress_text):
     st.session_state["active_df"] = (
         st.session_state["active_df"]
         .merge(
-            st.session_state["cohort_df"],
+            selected_cohort_df,
             on=st.session_state.get("cohort_selected_features", []),
             how="left",
         )
@@ -297,16 +363,18 @@ def optimize_eff_probability(max_iter, progress_bar, progress_text):
     _act_df.date = pd.to_datetime(_act_df.date)
 
     _act_df["month_diff"] = (
-        _act_df["date"].dt.year - _act_df["snapshot_date"].dt.year
-    ) * 12 + (_act_df["date"].dt.month - _act_df["snapshot_date"].dt.month)
+                                    _act_df["date"].dt.year - _act_df["snapshot_date"].dt.year
+                            ) * 12 + (_act_df["date"].dt.month - _act_df["snapshot_date"].dt.month)
     _act_df = _act_df[_act_df.month_diff >= 1].copy()
     _actuals = _act_df.groupby(["snapshot_date"]).amount.sum().values
 
-    initial_guess = st.session_state["cohort_df"]["eff_probability"].values
-    cohorts = st.session_state["cohort_df"].cohort.tolist()
+    initial_guess = selected_cohort_df["eff_probability"].values
+    st.session_state["initial_probabilities"] = initial_guess.copy()
+    cohorts = selected_cohort_df.cohort.tolist()
     bounds = [(0, 1) for _ in range(len(initial_guess))]
     print("Before optimization: ", initial_guess)
-    print(calculate_current_vs_act_error(initial_guess, cohorts, _actuals))
+
+    # print(calculate_current_vs_act_error(initial_guess, cohorts, _actuals))
 
     def progress_callback(xk):
         progress = min(1.0, progress_callback.iteration / max_iter)
@@ -320,12 +388,11 @@ def optimize_eff_probability(max_iter, progress_bar, progress_text):
         calculate_current_vs_act_error,
         initial_guess,
         bounds=bounds,
-        # method='L-BFGS-B',
         method="SLSQP",
         options={
             "maxiter": max_iter,
             "ftol": 1e-4,
-            "disp": True,
+            "disp": False,
         },
         callback=progress_callback,
         args=(cohorts, _actuals),
@@ -334,21 +401,34 @@ def optimize_eff_probability(max_iter, progress_bar, progress_text):
     if result.success:
         optimized_eff_probabilities = result.x
         print("After optimization: ", optimized_eff_probabilities)
-        st.session_state["cohort_df"][
-            "eff_probability"
+        st.session_state["cohort_df"].loc[
+            st.session_state["cohort_df"]["selected"], "eff_probability"
         ] = optimized_eff_probabilities
-        st.success("Optimization successful!")
         print(
             calculate_current_vs_act_error(
                 optimized_eff_probabilities, cohorts, _actuals
             )
         )
+        st.session_state["optimization_done"] = True
+        st.session_state["optimization_successful"] = True
         st.rerun()
     else:
         st.error("Optimization failed")
 
+    if st.session_state.get("optimization_successful", False):
+        st.success("Optimization successful!")
+        st.session_state["optimization_successful"] = False
+
     progress_bar.progress(1.0)
     progress_text.text("Optimization complete")
+
+def reset_probabilities():
+    if "initial_probabilities" in st.session_state:
+        st.session_state["cohort_df"].loc[
+            st.session_state["cohort_df"]["selected"], "eff_probability"
+        ] = st.session_state["initial_probabilities"]
+        st.session_state["disable_calculations"] = False
+        st.session_state["update_probabilities_clicked"] = False
 
 
 with open("./styles.css") as f:
@@ -363,6 +443,12 @@ if "cohort_df" not in st.session_state:
 if "data_df" not in st.session_state:
     pull_data()
 
+if "optimization_done" not in st.session_state:
+    st.session_state["optimization_done"] = False
+
+if "selected" not in st.session_state["cohort_df"]:
+    st.session_state["cohort_df"]["selected"] = True
+
 if "future_df" not in st.session_state:
     data = fetch_data_from_db("'2024-07-31'")
     _, st.session_state["future_df"] = preprocess(data)
@@ -372,7 +458,6 @@ if "reporting-experiments" not in st.session_state:
         "Existing Approach",
         "Default",
     ]
-
 
 if "all_experiments" not in st.session_state:
     st.session_state["all_experiments"] = fetch_all_experiments("karthik")
@@ -463,10 +548,9 @@ with left_pane:
     st.multiselect(
         "Select Experiments for Comparison",
         options=["Existing Approach", "Default"]
-        + st.session_state["all_experiments"],
+                + st.session_state["all_experiments"],
         key="reporting-experiments",
     )
-
 
 with main_pane:
     st.subheader("Cohort Creation")
@@ -545,11 +629,11 @@ with main_pane:
             label_visibility="collapsed",
         )
         if st.button(
-            "Optimize Probabilities",
-            disabled=not st.session_state.get(
-                "update_probabilities_clicked", False
-            ),
-            type="secondary",
+                "Optimize Probabilities",
+                disabled=not st.session_state.get(
+                    "update_probabilities_clicked", False
+                ),
+                type="secondary",
         ):
             progress_bar = st.progress(0)
             progress_text = st.empty()
@@ -558,6 +642,13 @@ with main_pane:
         progress_bar = st.progress(0)
         progress_text = st.empty()
 
+        st.button(
+            "Reset Probabilities",
+            on_click=reset_probabilities,
+            type="secondary",
+            disabled=not st.session_state.get("optimization_done", False),  # Enable only after optimization
+        )
+
     st.divider()
     with st.container():
 
@@ -565,7 +656,7 @@ with main_pane:
         agg_df = pd.DataFrame()
         column_order = []
         for expriment_name in ["Current"] + list(
-            st.session_state["reporting-experiments"]
+                st.session_state["reporting-experiments"]
         ):
             if expriment_name not in st.session_state["forecast_results"]:
                 if expriment_name == "Current":
@@ -633,7 +724,7 @@ with main_pane:
             col=1,
         )
         for i, experiment_name in enumerate(
-            ["Current"] + list(st.session_state["reporting-experiments"])
+                ["Current"] + list(st.session_state["reporting-experiments"])
         ):
             if experiment_name not in st.session_state["forecast_results"]:
                 if experiment_name == "Current":
@@ -810,6 +901,7 @@ with main_pane:
                     ]
                 ]
                 if coh_res is not None:
+                    st.write(coh_res)
                     st.table(
                         coh_res.set_index("Cohort")
                         .style.set_table_styles(
@@ -831,7 +923,7 @@ with main_pane:
                             ],
                             overwrite=False,
                         )
-                        .format(precision=0, thousands=",")
+                        .format(precision=2)
                     )
                     # st.write(st.session_state['cohort_df'])
                 else:
@@ -864,12 +956,12 @@ with main_pane:
                 "reporting-experiments"
             ]:
                 if (
-                    len(
-                        st.session_state["cohort_information"].get(
-                            experiment_name, {}
+                        len(
+                            st.session_state["cohort_information"].get(
+                                experiment_name, {}
+                            )
                         )
-                    )
-                    > 0
+                        > 0
                 ):
                     cohort_df = st.session_state["cohort_information"][
                         experiment_name
@@ -897,12 +989,12 @@ with main_pane:
 
                 if experiment_name == "Current":
                     if (
-                        len(
-                            st.session_state["forecast_results"].get(
-                                "Current", {}
+                            len(
+                                st.session_state["forecast_results"].get(
+                                    "Current", {}
+                                )
                             )
-                        )
-                        == 0
+                            == 0
                     ):
                         if experiment_name in _exp_columns:
                             _exp_columns.remove(experiment_name)
@@ -948,16 +1040,16 @@ with main_pane:
             fig = go.Figure()
 
             for i, experiment_name in enumerate(
-                ["Current"] + st.session_state["reporting-experiments"]
+                    ["Current"] + st.session_state["reporting-experiments"]
             ):
                 if experiment_name == "Current":
                     if (
-                        len(
-                            st.session_state["forecast_results"].get(
-                                "Current", {}
+                            len(
+                                st.session_state["forecast_results"].get(
+                                    "Current", {}
+                                )
                             )
-                        )
-                        == 0
+                            == 0
                     ):
                         continue
                 fig.add_trace(

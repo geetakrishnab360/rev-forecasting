@@ -4,6 +4,8 @@ import numpy as np
 from collections import OrderedDict
 import streamlit as st
 from datetime import datetime
+import warnings
+warnings.filterwarnings("ignore")
 
 
 def prepare_actual_rev_data():
@@ -374,13 +376,13 @@ def map_cohort_to_ids(dict_, df, id_col):
 
 
 def calculate_cohort_error(date_string, experiment_name):
-    print("*" * 10)
-    print("[DEBUG] calculate_cohort_error")
-    print(date_string, experiment_name)
-    print("forecast_results" in st.session_state)
+    # print("*" * 10)
+    # print("[DEBUG] calculate_cohort_error")
+    # print(date_string, experiment_name)
+    # print("forecast_results" in st.session_state)
 
     if "forecast_results" in st.session_state:
-        print("inside IF loop")
+        # print("inside IF loop")
         current_forecasts = st.session_state["forecast_results"].get(
             experiment_name, OrderedDict()
         )
