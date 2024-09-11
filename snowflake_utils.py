@@ -6,15 +6,24 @@ import os
 import streamlit as st
 
 
-# @st.cache_resource()
-def create_snowflake_connection(user, role):
-    return connector.connect(
+# # @st.cache_resource()
+# def create_snowflake_connection(user, role):
+#     return connector.connect(
+#         account=os.environ["SNOWFLAKE_ACCOUNT"],
+#         user=user,
+#         authenticator="externalbrowser",
+#         warehouse=os.environ["SNOWFLAKE_WAREHOUSE"],
+#         role=role,
+#     )
+    
+def create_snowflake_connection():
+    con = connector.connect(
+        user=os.environ["SNOWFLAKE_USER"],
         account=os.environ["SNOWFLAKE_ACCOUNT"],
-        user=user,
-        authenticator="externalbrowser",
-        warehouse=os.environ["SNOWFLAKE_WAREHOUSE"],
-        role=role,
+        password=os.environ["SNOWFLAKE_PASSWORD"],
+        warehouse='POWERHOUSE',
     )
+    return con
 
 
 def convert_period_to_dates(duration):
@@ -114,8 +123,6 @@ def fetch_data_from_db(dates, later=True):
 
     try:
         conn = create_snowflake_connection(
-            os.environ["SNOWFLAKE_USER"],
-            os.environ["SNOWFLAKE_ROLE"],
         )
         cur = conn.cursor()
         cur.execute(sql_query)
