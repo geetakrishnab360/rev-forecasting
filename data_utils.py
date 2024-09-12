@@ -5,6 +5,7 @@ from collections import OrderedDict
 import streamlit as st
 from datetime import datetime
 import warnings
+
 warnings.filterwarnings("ignore")
 
 
@@ -63,7 +64,7 @@ def convert_to_cohort_df(experiemnt_df):
 
 
 def preprocess(
-    dataframe,
+        dataframe,
 ):
     def convert_columns_to_lower(df):
         df.columns = [col.lower() for col in df.columns]
@@ -210,16 +211,16 @@ def preprocess(
 
 
 def _calculate_forecasts(
-    df,
-    probability_columns,
-    amount_columns,
-    forecast_start_month=None,
-    forecast_end_month=None,
+        df,
+        probability_columns,
+        amount_columns,
+        forecast_start_month=None,
+        forecast_end_month=None,
 ):
     _df = df.copy()
     _df["end_date"] = _df.apply(
         lambda x: x["modified_start_date"]
-        + pd.DateOffset(
+                  + pd.DateOffset(
             months=int(x["expected_project_duration_in_months"]) - 1
         ),
         axis=1,
@@ -262,12 +263,12 @@ def expand_rows(row, probability_columns):
             split_amount = 0.0
         else:
             split_amount = (
-                row[prob_col]
-                * (
-                    row["amount_in_company_currency"]
-                    + row["tcv_and_amount_delta"]
-                )
-                / row["expected_project_duration_in_months"]
+                    row[prob_col]
+                    * (
+                            row["amount_in_company_currency"]
+                            + row["tcv_and_amount_delta"]
+                    )
+                    / row["expected_project_duration_in_months"]
             )
         res.update({prob_col: split_amount})
         # print(res)
@@ -275,7 +276,7 @@ def expand_rows(row, probability_columns):
 
 
 def calculate_forecasts(
-    df, probability_columns, amount_columns, forecast_end_month, rename=True
+        df, probability_columns, amount_columns, forecast_end_month, rename=True
 ):
     _forecasts = [OrderedDict() for _ in probability_columns]
     unique_snapshot_dates = sorted(list(df["snapshot_month"].unique()))
@@ -332,11 +333,11 @@ def _calculate_snapshot_monthly_number(date_string, experiment_name):
                 _act = st.session_state["actual_df"][
                     st.session_state["actual_df"].hubspot_id.isin(all_ids)
                     & (st.session_state["actual_df"].date >= d)
-                ].copy()
+                    ].copy()
 
                 mapping = {}
                 for i, m in enumerate(
-                    forecast_df.date.drop_duplicates().sort_values()
+                        forecast_df.date.drop_duplicates().sort_values()
                 ):
                     mapping[m] = f"M{i + 1}"
                 forecast_df.date = forecast_df.date.map(mapping)
@@ -393,15 +394,17 @@ def calculate_cohort_error(date_string, experiment_name):
             "Default", OrderedDict()
         )
         _results = []
+        __results = []
         for d in current_forecasts.keys():
-            cohort_wise = st.session_state["active_df"][
-                st.session_state["active_df"].snapshot_date.dt.date == d
-            ][
+            # st.write(d)
+            # st.write(current_forecasts[d])
+            cohort_wise = st.session_state["active_df"][st.session_state["active_df"].snapshot_date.dt.date == d]
+            [
                 [
                     "record_id",
                     "cohort",
                     *st.session_state["cohort_selected_features"],
-                    "eff_probability",
+                    "final_probability",
                 ]
             ].copy()
             forecasts_data = (
@@ -411,16 +414,18 @@ def calculate_cohort_error(date_string, experiment_name):
                 .reset_index()
                 .rename(columns={"amount": "current"})
             )
+            # st.write(forecasts_data)
             forecasts_data = cohort_wise.merge(
                 forecasts_data, on="record_id", how="left"
             )
+            # st.write(forecasts_data)
             _act = (
                 st.session_state["actual_df"][
                     st.session_state["actual_df"].hubspot_id.isin(
                         forecasts_data.record_id
                     )
                     & (st.session_state["actual_df"].date >= d)
-                ]
+                    ]
                 .groupby("hubspot_id")
                 .amount.sum()
                 .reset_index()
@@ -450,15 +455,32 @@ def calculate_cohort_error(date_string, experiment_name):
                 on="record_id",
                 how="left",
             ).fillna(0.0)
+            print(len(forecasts_data[forecasts_data.cohort == "cohort 0"].record_id.unique()))
+            # st.write("Check:",forecasts_data[forecasts_data.cohort == "cohort 0"])
             forecasts_data = forecasts_data.groupby(
                 [
                     "cohort",
-                    *st.session_state["cohort_selected_features"],
-                    "eff_probability",
+                    # *st.session_state["cohort_selected_features"],
+                    # "final_probability",
                 ]
-            )[["actual", "existing", "default", "current"]].sum()
+            )[
+                ["actual", "existing", "default", "current", 'final_probability']
+            ].agg({"actual": "sum", "existing": "sum", "default": "sum", "current": "sum",
+                   'final_probability': 'mean'}).reset_index()
+            forecasts_data = forecasts_data.set_index("cohort")
             _results.append(forecasts_data.copy())
-            # st.write(forecasts_data)
+            # res_dup = forecasts_data.copy()
+            # res_dup = res_dup.reset_index()
+            # # print(len(res_dup[res_dup.cohort == "cohort 0"]))
+            # res_dup = res_dup.groupby("cohort")[
+            #     ["actual", "existing", "default", "current", 'final_probability']
+            # ].agg({"actual": "sum", "existing": "sum", "default": "sum", "current": "sum",
+            #        'final_probability': 'mean'}).reset_index()
+            # res_dup = res_dup.set_index("cohort")
+            # __results.append(res_dup.copy())
+
+        # st.write(_results)
+        # st.write(__results)
         cohort_result_df = (sum(_results) / len(_results)).copy()
         cohort_result_df["error_current"] = 100 * abs(
             1 - cohort_result_df["current"] / cohort_result_df["actual"]
