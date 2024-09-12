@@ -838,7 +838,7 @@ with main_pane:
             st.success("Optimization successful!")
             st.session_state["optimization_successful"] = False
 
-        st.write(st.session_state['active_df'])
+        # st.write(st.session_state['active_df'])
 
         st.button(
             "Reset Probabilities",
