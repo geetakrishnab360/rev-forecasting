@@ -263,7 +263,7 @@ def cohorts_update(selected_features):
     # Create a cohort for rows where deal_probability is not equal to effective_probability
     data_df = st.session_state["data_df"].copy()
     cohort_0 = data_df[data_df["deal_probability"] != data_df["effective_probability"]]
-    print(len(cohort_0))
+    # print(len(cohort_0))
     cohort_0["cohort"] = "cohort 0"
 
     # Remove these rows from the main DataFrame
@@ -280,7 +280,7 @@ def cohorts_update(selected_features):
             .set_index("deal_stage")["deal_probability"]
             .to_dict()
         )
-        print("Deal stage and probability dict: ", deal_stage_and_probability_dict)
+        # print("Deal stage and probability dict: ", deal_stage_and_probability_dict)
         cohort_df["eff_probability"] = cohort_df["deal_stage"].map(
             deal_stage_and_probability_dict
         )
@@ -598,7 +598,7 @@ def optimize_eff_probability(max_iter, progress_bar, progress_text):
             "2024-07-01",
         )
         st.session_state["forecast_results"]["Current"] = forecast_results.copy()
-        print(forecast_results)
+        # print(forecast_results)
         st.rerun()
         # st.write(forecast_results)
     else:
