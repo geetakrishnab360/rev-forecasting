@@ -394,7 +394,6 @@ def calculate_cohort_error(date_string, experiment_name):
             "Default", OrderedDict()
         )
         _results = []
-        __results = []
         for d in current_forecasts.keys():
             # st.write(d)
             # st.write(current_forecasts[d])
@@ -403,10 +402,13 @@ def calculate_cohort_error(date_string, experiment_name):
                 [
                     "record_id",
                     "cohort",
-                    *st.session_state["cohort_selected_features"],
+                    # *st.session_state["cohort_selected_features"],
                     "final_probability",
                 ]
             ].copy()
+            # st.write("Snapshot Date:", d)
+            # st.write("Cohort Wise:", cohort_wise)
+            # st.write("Current Forecasts:", current_forecasts[d])
             forecasts_data = (
                 current_forecasts[d]
                 .groupby("record_id")
@@ -414,10 +416,12 @@ def calculate_cohort_error(date_string, experiment_name):
                 .reset_index()
                 .rename(columns={"amount": "current"})
             )
+            # st.write("Forecasts Data before merging:", forecasts_data)
             # st.write(forecasts_data)
             forecasts_data = cohort_wise.merge(
                 forecasts_data, on="record_id", how="left"
             )
+            # st.write("Forecasts Data after merging:", forecasts_data)
             # st.write(forecasts_data)
             _act = (
                 st.session_state["actual_df"][
@@ -455,8 +459,7 @@ def calculate_cohort_error(date_string, experiment_name):
                 on="record_id",
                 how="left",
             ).fillna(0.0)
-            print(len(forecasts_data[forecasts_data.cohort == "cohort 0"].record_id.unique()))
-            # st.write("Check:",forecasts_data[forecasts_data.cohort == "cohort 0"])
+            # st.write("Forecasts Data after merging with Default & Existing:", forecasts_data)
             forecasts_data = forecasts_data.groupby(
                 [
                     "cohort",
@@ -467,21 +470,14 @@ def calculate_cohort_error(date_string, experiment_name):
                 ["actual", "existing", "default", "current", 'final_probability']
             ].agg({"actual": "sum", "existing": "sum", "default": "sum", "current": "sum",
                    'final_probability': 'mean'}).reset_index()
+            # st.write("Forecasts Data after grouping by cohort:", forecasts_data)
             forecasts_data = forecasts_data.set_index("cohort")
             _results.append(forecasts_data.copy())
-            # res_dup = forecasts_data.copy()
-            # res_dup = res_dup.reset_index()
-            # # print(len(res_dup[res_dup.cohort == "cohort 0"]))
-            # res_dup = res_dup.groupby("cohort")[
-            #     ["actual", "existing", "default", "current", 'final_probability']
-            # ].agg({"actual": "sum", "existing": "sum", "default": "sum", "current": "sum",
-            #        'final_probability': 'mean'}).reset_index()
-            # res_dup = res_dup.set_index("cohort")
-            # __results.append(res_dup.copy())
 
         # st.write(_results)
-        # st.write(__results)
-        cohort_result_df = (sum(_results) / len(_results)).copy()
+        concatenated_df = pd.concat(_results)
+        # st.write(concatenated_df)
+        cohort_result_df = concatenated_df.groupby("cohort").mean().reset_index()
         cohort_result_df["error_current"] = 100 * abs(
             1 - cohort_result_df["current"] / cohort_result_df["actual"]
         )
@@ -491,7 +487,7 @@ def calculate_cohort_error(date_string, experiment_name):
         cohort_result_df["error_default"] = 100 * abs(
             1 - cohort_result_df["default"] / cohort_result_df["actual"]
         )
-        return cohort_result_df.reset_index()
+        return cohort_result_df
 
 
 def aggregate_snapshot_numbers(snapshot_numbers):

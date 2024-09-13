@@ -1,5 +1,6 @@
 import streamlit as st
 import plotly.graph_objs as go
+from bokeh.core.property.vectorization import value
 from plotly.subplots import make_subplots
 from plotly import colors
 from dotenv import load_dotenv
@@ -30,14 +31,14 @@ from db import (
 from components import set_header
 import numpy as np
 import warnings
+from streamlit_navigation_bar import st_navbar
 
 warnings.filterwarnings("ignore")
 
 # from db import fetch_experiment
 # from data_utils import convert_to_cohort_df
 
-st.set_page_config(layout="wide", page_title="Blend Forecasting")
-
+st.set_page_config(layout="wide", page_title="Blend Forecasting", initial_sidebar_state="collapsed")
 load_dotenv()
 prepare_actual_rev_data()
 set_header("Forecasting Simulation - Pipeline Analysis")
@@ -325,144 +326,6 @@ def cohorts_update(selected_features):
 
 def allow_calculation():
     st.session_state["disable_calculations"] = False
-
-
-def calculate_current_vs_act_error1(eff_probabilities, temp, cohorts, actuals):
-    selected_cohort_df = st.session_state["cohort_df"][st.session_state["cohort_df"]["selected"]].copy()
-    selected_cohort_df["eff_probability"] = eff_probabilities
-    prob_map = {c: p for c, p in zip(cohorts, eff_probabilities)}
-    # temp = st.session_state['active_df'].copy()
-    temp["final_probability"] = (
-        temp.cohort.map(prob_map).fillna(0.0)
-    )
-    forecast_results = calculate_forecasts(
-        temp,
-        ["final_probability"],
-        ["amount"],
-        "2024-07-01",
-    )
-
-    st.session_state["forecast_results"]["Current"] = forecast_results.copy()
-
-    total_forecasts = []
-    for _res in forecast_results.values():
-        total_forecasts.append(_res["amount"].sum().item())
-
-    total_forecasts = np.array(total_forecasts)
-
-    return np.mean(abs(1 - total_forecasts / actuals))
-
-
-def optimize_eff_probability1(max_iter, progress_bar, progress_text):
-    selected_cohort_df = st.session_state["cohort_df"][st.session_state["cohort_df"]["selected"]].copy()
-    st.session_state["active_df"] = st.session_state["data_df"].copy()
-    st.session_state["active_df"][
-        st.session_state.get("cohort_selected_features", [])
-    ] = st.session_state["active_df"][
-        st.session_state.get("cohort_selected_features", [])
-    ].fillna(
-        "None"
-    )
-    st.session_state["active_df"] = (
-        st.session_state["active_df"]
-        .merge(
-            st.session_state['cohort_df'][st.session_state['cohort_df'].cohort != 'cohort 0'],
-            on=st.session_state.get("cohort_selected_features", []),
-            how="left",
-        )
-        .copy()
-    )
-    temp = st.session_state['active_df'].copy()
-
-    if edited_data.iloc[0]['selected'] == True:
-        ids = temp[
-            temp['deal_probability'] != temp['effective_probability']
-            ].index
-        temp.loc[ids, 'final_probability'] = temp.loc[
-            ids, 'effective_probability']
-
-        temp.loc[ids, 'cohort'] = 'cohort 0'
-    # st.write("**Temp**", temp)
-    _act_df = st.session_state["active_df"][
-        ["snapshot_date", "record_id"]
-    ].merge(
-        st.session_state["actual_df"],
-        left_on="record_id",
-        right_on="hubspot_id",
-    )
-    _act_df.date = pd.to_datetime(_act_df.date)
-
-    _act_df["month_diff"] = ((_act_df["date"].dt.year - _act_df["snapshot_date"].dt.year)
-                             * 12 + (_act_df["date"].dt.month - _act_df["snapshot_date"].dt.month))
-    _act_df = _act_df[_act_df.month_diff >= 1].copy()
-    _actuals = _act_df.groupby(["snapshot_date"]).amount.sum().values
-
-    initial_guess = selected_cohort_df["eff_probability"].values
-    st.session_state["initial_probabilities"] = initial_guess.copy()  # TO DO
-    cohorts = selected_cohort_df.cohort.tolist()  # TO DO
-    bounds = [(0, 1) for _ in range(len(initial_guess))]
-    print("Before optimization: ", initial_guess)
-
-    def progress_callback(xk):
-        progress = min(1.0, progress_callback.iteration / max_iter)
-        progress_bar.progress(progress)
-        progress_text.text(f"Optimization progress: {int(progress * 100)}%")
-        progress_callback.iteration += 1
-
-    progress_callback.iteration = 0
-
-    result = minimize(
-        calculate_current_vs_act_error,
-        initial_guess,
-        bounds=bounds,
-        method="SLSQP",
-        options={
-            "maxiter": max_iter,
-            "ftol": 1e-4,
-            "disp": False,
-        },
-        callback=progress_callback,
-        args=(temp, cohorts, _actuals),
-    )
-
-    if result.success:
-        optimized_eff_probabilities = result.x
-        print("After optimization: ", optimized_eff_probabilities)
-        st.session_state["cohort_df"].loc[
-            st.session_state["cohort_df"]["selected"], "eff_probability"
-        ] = optimized_eff_probabilities
-        selected_cohort_df = st.session_state["cohort_df"][(st.session_state["cohort_df"]["selected"] == True) & (
-            (st.session_state["cohort_df"]["cohort"] != 'cohort 0'))].copy()
-        prob_map = {c: p for c, p in zip(selected_cohort_df.cohort, selected_cohort_df.eff_probability)}
-        # st.write("Temp", temp)
-        temp = st.session_state['active_df'].copy()
-        # st.write("Prob Map", prob_map)
-        # map only selected cohorts
-        temp["final_probability"] = (temp.cohort.map(prob_map).fillna(temp["final_probability"]))
-        # st.write("Temp", temp)
-        if edited_data.iloc[0]['selected'] == True:
-            ids = temp[
-                temp['deal_probability'] != temp['effective_probability']
-                ].index
-            # st.write("in if coh_df", st.session_state["cohort_df"])
-            temp.loc[ids, 'final_probability'] = st.session_state["cohort_df"].loc[
-                st.session_state["cohort_df"]['cohort'] == 'cohort 0', "eff_probability"].values[0]
-            st.session_state["active_df"].loc[ids, 'final_probability'] = temp.loc[ids, 'final_probability']
-            # st.write("After if Temp", temp)
-            # st.write("After if Active", st.session_state["active_df"])
-        st.session_state["active_df"] = temp.copy()
-        st.session_state["optimization_done"] = True
-        st.session_state["optimization_successful"] = True
-        st.rerun()
-    else:
-        st.error("Optimization failed")
-
-    if st.session_state.get("optimization_successful"):
-        st.success("Optimization successful!")
-        st.session_state["optimization_successful"] = False
-
-    progress_bar.progress(1.0)
-    progress_text.text("Optimization complete")
 
 
 def calculate_current_vs_act_error(eff_probabilities, temp, cohorts, actuals):
@@ -815,6 +678,9 @@ with main_pane:
             type="primary",
         )
 
+        # if 'active_df' in st.session_state:
+        #     st.write(st.session_state['active_df'])
+
         max_iter = st.number_input(
             "Max Iterations",
             min_value=1,
@@ -1061,7 +927,10 @@ with main_pane:
                         overwrite=False,
                     ).format(precision=0, thousands=",")
                 )
-        # st.write(st.session_state['active_df'])
+
+        # if 'active_df' in st.session_state:
+        #     st.write(st.session_state['active_df'])
+
         with st.expander("Cohort Results"):
             st.markdown(
                 "<div class='selected-snapshot'>Selected Experiment : Current</div>",
@@ -1074,6 +943,7 @@ with main_pane:
                     st.session_state["dates_string"],
                     "Current",
                 )
+                # st.write(coh_res)
                 coh_res = coh_res.rename(
                     columns={
                         "final_probability": "Probability",

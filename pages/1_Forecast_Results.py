@@ -31,7 +31,7 @@ from components import set_header
 import numpy as np
 import warnings
 
-st.set_page_config(layout="wide", page_title="Forecast Results")
+st.set_page_config(layout="wide", page_title="Forecast Results", initial_sidebar_state="collapsed")
 set_header("Forecasting Simulation - Pipeline Analysis")
 with open("./styles.css") as f:
     st.markdown(
