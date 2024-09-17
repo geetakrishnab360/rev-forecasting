@@ -1221,14 +1221,13 @@ with main_pane:
 
             map_deal_pipeline = {
                 '0_new': 'Pipeline 0-2', '1_connected_to_meet': 'Pipeline 0-2', '2_needs_expressed': 'Pipeline 0-2',
-                '3_connected_to_solution': 'Pipeline 3-6', '4_proposal_presented': 'Pipeline 3-6',
+                '3_qualified_oppurtunity': 'Pipeline 3-6', '4_proposal_presented': 'Pipeline 3-6',
                 '5_verbal_agreement': 'Pipeline 3-6',
                 '6_contracting': 'Pipeline 3-6', '7_closed_won': '7_closed_lost', '7_closed_lost': 'Backlog'
             }
             res_['Category'] = res_['deal_stage'].map(map_deal_pipeline)
             st.session_state['res_'] = res_.copy()
-
-            if experiment_name:
+            if experiment_name in ['Existing Approach', 'Default'] or experiment_name in st.session_state["cohort_information"]:
                 pivot_res = res_.pivot_table(
                     index=['Category', 'pipeline', 'associated_company', 'record_id', 'deal_name', 'deal_stage',
                            'customer_segment',
