@@ -1252,6 +1252,8 @@ with main_pane:
                 for year in years:
                     year_columns = [col for col in date_columns if col.year == year]
                     cumulative_sum_df[f'Cumulative_{year}'] = pivot_res[year_columns].sum(axis=1)
+                updated_date_columns = [col.strftime('%b-%y') for col in date_columns]
+                cumulative_sum_df.rename(columns={old:new for old,new in zip(date_columns, updated_date_columns)}, inplace=True)
                 st.session_state['final_all_sum_df'] = cumulative_sum_df.copy()
 
                 client_view = cumulative_sum_df.drop(columns=['pipeline'])
