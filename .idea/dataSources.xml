@@ -1,11 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
-    <data-source source="LOCAL" name="blend-forecasting" uuid="3c8bb13b-f9c6-4321-840e-56f03ca04ad6">
+    <data-source source="LOCAL" name="blend-forecasting" uuid="812090a0-e99c-4a40-a2df-786405c50b93">
       <driver-ref>sqlite.xerial</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
-      <jdbc-url>jdbc:sqlite:C:\Users\KarthikKurugodu\PycharmProjects\rev-forecasting\blend-forecasting.db</jdbc-url>
+      <jdbc-url>jdbc:sqlite:C:\Users\KarthikKurugodu\PycharmProjects\version-2-0409\version-2-0409\blend-forecasting.db</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
+    <data-source source="LOCAL" name="blend-forecasting [2]" uuid="9f3f7878-5872-430a-ab58-2761e29be6bb">
+      <driver-ref>sqlite.xerial</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
+      <jdbc-url>jdbc:sqlite:C:\Users\KarthikKurugodu\PycharmProjects\version-2-0409\blend-forecasting.db</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
       <libraries>
         <library>

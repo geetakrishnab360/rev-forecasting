@@ -88,3 +88,10 @@ div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:fi
 div.card {
     background-color: aqua;
 }
+
+.selected-snapshot {
+    font-weight: bold;
+    color: #2d7dce;
+    margin-bottom: 20px;
+    font-size: 1.5rem;
+}

@@ -4,12 +4,15 @@ import numpy as np
 from collections import OrderedDict
 import streamlit as st
 from datetime import datetime
-from scipy.optimize import minimize
+from io import BytesIO
+import warnings
+
+warnings.filterwarnings("ignore")
 
 
 def prepare_actual_rev_data():
     actual_df = pd.read_excel(
-        r"C:\Users\KarthikKurugodu\PycharmProjects\streamlit-tool\streamlit-tool\actuals.xlsx"
+        r"data/actuals.xlsx"
     )
     actual_df.columns = [
         "hubspot_id",
@@ -42,19 +45,24 @@ def prepare_actual_rev_data():
 
 
 def convert_to_cohort_df(experiemnt_df):
+    # print("******************Experiment df******************")
+    # print(experiemnt_df)
     features = experiemnt_df["columns"].str.split(
         "|",
         expand=True,
         regex=False,
     )
+    # print("******************Features******************")
+    # print(features)
     features.columns = features.iloc[0]
     features = features.iloc[1:]
     features["eff_probability"] = (
         experiemnt_df["probabilities"].iloc[1:].copy()
     )
+    features["selected"] = experiemnt_df["selected"].iloc[1:].copy()
     features = features.reset_index(drop=True)
     features["cohort"] = pd.Series(
-        [f"cohort {i}" for i in range(1, len(experiemnt_df))]
+        [f"cohort {i}" for i in range(0, len(experiemnt_df)-1)]
     )
     # features.columns = features.iloc[0]
     # features.drop(0, inplace=True)
@@ -99,7 +107,9 @@ def preprocess(
 
     def strip_white_spaces(df):
         string_columns = df.select_dtypes(include="object").columns
-        df[string_columns] = df[string_columns].transform(lambda x: x.str.strip())
+        df[string_columns] = df[string_columns].transform(
+            lambda x: x.str.strip()
+        )
         return df
 
     def fill_nan_with_zero(df):
@@ -206,7 +216,13 @@ def preprocess(
     )
 
 
-def _calculate_forecasts(df, forecast_end_month, forecast_start_month):
+def _calculate_forecasts(
+        df,
+        probability_columns,
+        amount_columns,
+        forecast_start_month=None,
+        forecast_end_month=None,
+):
     _df = df.copy()
     _df["end_date"] = _df.apply(
         lambda x: x["modified_start_date"]
@@ -216,50 +232,81 @@ def _calculate_forecasts(df, forecast_end_month, forecast_start_month):
         axis=1,
     )
 
-    def expand_rows(row):
-        date_range = pd.date_range(
-            start=row["modified_start_date"], end=row["end_date"], freq="MS"
-        )
+    output_df = pd.concat(
+        _df.apply(
+            expand_rows, axis=1, probability_columns=probability_columns
+        ).tolist(),
+        ignore_index=True,
+    )
+    output_df = output_df.rename(
+        columns={
+            p_col: a_col
+            for p_col, a_col in zip(probability_columns, amount_columns)
+        }
+    )
+    filters = []
+    if forecast_start_month:
+        filters.append(f"date >= '{forecast_start_month}'")
+    if forecast_end_month:
+        filters.append(f"date <= '{forecast_end_month}'")
+
+    if len(filters) > 0:
+        return output_df.query(" and ".join(filters))
+
+    return output_df
+
+
+def expand_rows(row, probability_columns):
+    date_range = pd.date_range(
+        start=row["modified_start_date"], end=row["end_date"], freq="MS"
+    )
+    res = {
+        "record_id": row["record_id"],
+        "date": date_range,
+    }
+    for prob_col in probability_columns:
         if row["expected_project_duration_in_months"] == 0:
             split_amount = 0.0
         else:
             split_amount = (
-                    row["final_probability"]
+                    row[prob_col]
                     * (
                             row["amount_in_company_currency"]
                             + row["tcv_and_amount_delta"]
                     )
                     / row["expected_project_duration_in_months"]
             )
-        return pd.DataFrame(
-            {
-                "record_id": row["record_id"],
-                "date": date_range,
-                "amount": split_amount,
-            }
-        )
-
-    output_df = pd.concat(
-        _df.apply(expand_rows, axis=1).tolist(), ignore_index=True
-    )
-    output_df = output_df[
-        (output_df.date <= forecast_end_month)
-        & (output_df.date >= forecast_start_month)
-        ]
-    return output_df
+        res.update({prob_col: split_amount})
+        # print(res)
+    return pd.DataFrame(res)
 
 
-def calculate_forecasts(df, forecast_end_month):
-    _forecasts = OrderedDict()
+def calculate_forecasts(
+        df, probability_columns, amount_columns, forecast_end_month, rename=True
+):
+    _forecasts = [OrderedDict() for _ in probability_columns]
     unique_snapshot_dates = sorted(list(df["snapshot_month"].unique()))
     for date in unique_snapshot_dates:
         forecast_df = _calculate_forecasts(
             df[df.snapshot_month == date].copy(),
-            forecast_end_month,
+            probability_columns,
+            amount_columns,
             date + pd.DateOffset(days=1),
+            forecast_end_month,
         )
-        _forecasts[date] = forecast_df.copy()
-
+        for index, a_col in enumerate(amount_columns):
+            if rename:
+                _forecasts[index][date] = (
+                    forecast_df[["record_id", "date", a_col]]
+                    .rename(columns={a_col: "amount"})
+                    .copy()
+                )
+            else:
+                _forecasts[index][date] = forecast_df[
+                    ["record_id", "date", a_col]
+                ].copy()
+    if len(amount_columns) == 1:
+        return _forecasts[0]
     return _forecasts
 
 
@@ -271,7 +318,6 @@ def prepare_results(res):
     return results_df.T
 
 
-# @st.cache_data()
 def _calculate_snapshot_monthly_number(date_string, experiment_name):
     # print(date_string, experiment_name)
     dates = [
@@ -327,88 +373,125 @@ def get_ids_for_each_cohort(active_dff, forecast_dff):
 
 
 def map_cohort_to_ids(dict_, df, id_col):
-    id_to_cohort = {id_: cohort for cohort, ids in dict_.items() for id_ in ids}
-    df['cohort'] = df[id_col].map(id_to_cohort)
+    id_to_cohort = {
+        id_: cohort for cohort, ids in dict_.items() for id_ in ids
+    }
+    df["cohort"] = df[id_col].map(id_to_cohort)
     return df
 
 
 def calculate_cohort_error(date_string, experiment_name):
-    if 'active_df' in st.session_state:
-        active_df = st.session_state['active_df'].copy()
-        # st.write(active_df)
-        # st.write(st.session_state['cohort_df'])
-        actual_df = st.session_state['actual_df'].copy()
-        actual_df = actual_df.rename(columns={'hubspot_id': 'record_id'})
-        res_current, res_existing, res_default, res_actual = pd.DataFrame(), pd.DataFrame(), \
-            pd.DataFrame(), pd.DataFrame()
-        dates = [datetime.strptime(d.replace("'", ""), "%Y-%m-%d").date()
-                 for d in date_string.split(",")]
+    # print("*" * 10)
+    # print("[DEBUG] calculate_cohort_error")
+    # print(date_string, experiment_name)
+    # print("forecast_results" in st.session_state)
 
-        if 'forecast_results' in st.session_state:
-            current_forecasts = st.session_state['forecast_results'].get(experiment_name, OrderedDict())
-            existing_forecasts = st.session_state['forecast_results'].get('Existing Approach', OrderedDict())
-            default_forecasts = st.session_state['forecast_results'].get('Default', OrderedDict())
-
-            if len(current_forecasts) > 0:
-                _results = OrderedDict()
-
-                for d in dates:
-                    snapshot_active_df = active_df[active_df.snapshot_month == d].copy()
-                    current_forecast_df, existing_forecast_df, default_forecast_df = current_forecasts[d].copy(), \
-                        existing_forecasts[d].copy(), default_forecasts[d].copy()
-                    actual_df_temp = actual_df[actual_df.date >= d].copy()
-                    # st.write(d)
-                    # st.write("Actual",actual_df_temp)
-                    # st.write("Active",snapshot_active_df)
-                    # st.write("Current",current_forecast_df)
-                    # Get cohort mappings and map them to the forecast DataFrames
-                    cohort_id_dict = get_ids_for_each_cohort(snapshot_active_df, current_forecast_df)
-                    # st.write(cohort_id_dict)
-                    current_forecast_df, existing_forecast_df, default_forecast_df, actual_df_temp = [
-                        map_cohort_to_ids(cohort_id_dict, df, 'record_id')
-                        for df in [current_forecast_df, existing_forecast_df, default_forecast_df, actual_df_temp]
+    if "forecast_results" in st.session_state:
+        # print("inside IF loop")
+        current_forecasts = st.session_state["forecast_results"].get(
+            experiment_name, OrderedDict()
+        )
+        existing_forecasts = st.session_state["forecast_results"].get(
+            "Existing Approach", OrderedDict()
+        )
+        default_forecasts = st.session_state["forecast_results"].get(
+            "Default", OrderedDict()
+        )
+        _results = []
+        for d in current_forecasts.keys():
+            # st.write(d)
+            # st.write(current_forecasts[d])
+            cohort_wise = st.session_state["active_df"][st.session_state["active_df"].snapshot_date.dt.date == d]
+            [
+                [
+                    "record_id",
+                    "cohort",
+                    # *st.session_state["cohort_selected_features"],
+                    "final_probability",
+                ]
+            ].copy()
+            # st.write("Snapshot Date:", d)
+            # st.write("Cohort Wise:", cohort_wise)
+            # st.write("Current Forecasts:", current_forecasts[d])
+            forecasts_data = (
+                current_forecasts[d]
+                .groupby("record_id")
+                .amount.sum()
+                .reset_index()
+                .rename(columns={"amount": "current"})
+            )
+            # st.write("Forecasts Data before merging:", forecasts_data)
+            # st.write(forecasts_data)
+            forecasts_data = cohort_wise.merge(
+                forecasts_data, on="record_id", how="left"
+            )
+            # st.write("Forecasts Data after merging:", forecasts_data)
+            # st.write(forecasts_data)
+            _act = (
+                st.session_state["actual_df"][
+                    st.session_state["actual_df"].hubspot_id.isin(
+                        forecasts_data.record_id
+                    )
+                    & (st.session_state["actual_df"].date >= d)
                     ]
-                    # st.write("Current",current_forecast_df)
-                    # st.write("Actual",actual_df_temp)
-                    # st.write(actual_df_temp)
-                    actual_df_temp = actual_df_temp.dropna(subset=['cohort'])
-                    # st.write(actual_df_temp)
+                .groupby("hubspot_id")
+                .amount.sum()
+                .reset_index()
+                .rename(
+                    columns={"hubspot_id": "record_id", "amount": "actual"}
+                )
+            )
 
-                    res_list = [res_current, res_existing, res_default, res_actual]
-                    forecast_list = [current_forecast_df, existing_forecast_df, default_forecast_df, actual_df_temp]
+            forecasts_data = forecasts_data.merge(
+                _act, on="record_id", how="left"
+            )
+            # st.write("Before filling NA:", forecasts_data)
+            forecasts_data = forecasts_data.fillna(0.0)
+            forecasts_data = forecasts_data.merge(
+                existing_forecasts[d]
+                .groupby("record_id")
+                .amount.sum()
+                .reset_index()
+                .rename(columns={"amount": "existing"}),
+                on="record_id",
+                how="left",
+            ).fillna(0.0)
+            forecasts_data = forecasts_data.merge(
+                default_forecasts[d]
+                .groupby("record_id")
+                .amount.sum()
+                .reset_index()
+                .rename(columns={"amount": "default"}),
+                on="record_id",
+                how="left",
+            ).fillna(0.0)
+            # st.write("Forecasts Data after merging with Default & Existing:", forecasts_data)
+            forecasts_data = forecasts_data.groupby(
+                [
+                    "cohort",
+                    # *st.session_state["cohort_selected_features"],
+                    # "final_probability",
+                ]
+            )[
+                ["actual", "existing", "default", "current", 'final_probability']
+            ].agg({"actual": "sum", "existing": "sum", "default": "sum", "current": "sum",
+                   'final_probability': 'mean'}).reset_index()
+            # st.write("Forecasts Data after grouping by cohort:", forecasts_data)
+            forecasts_data = forecasts_data.set_index("cohort")
+            _results.append(forecasts_data.copy())
 
-                    for i, df in enumerate(forecast_list):
-                        res_list[i] = pd.concat([res_list[i], df.groupby('cohort')['amount'].sum().reset_index()])
-
-                    res_current, res_existing, res_default, res_actual = res_list
-
-                def calculate_avg(df, column_name):
-                    df = df.groupby('cohort')['amount'].mean().reset_index()
-                    df.rename(columns={'amount': column_name}, inplace=True)
-                    return df
-
-                res_current = calculate_avg(res_current, 'avg_forecast_amount')
-                res_existing = calculate_avg(res_existing, 'avg_existing_forecast_amount')
-                res_default = calculate_avg(res_default, 'avg_default_forecast_amount')
-                res_actual = calculate_avg(res_actual, 'avg_actual_amount')
-
-                # Merge all results into a final DataFrame
-                final_res = res_current.merge(res_existing, on='cohort', how='left').merge(res_default, on='cohort',
-                                                                                           how='left').merge(res_actual,
-                                                                                                             on='cohort',
-                                                                                                             how='left')
-                final_res['Current % Error'] = 100.0 * abs(
-                    1 - final_res['avg_forecast_amount'] / final_res['avg_actual_amount'])
-                final_res['Existing % Error'] = 100.0 * abs(
-                    1 - final_res['avg_existing_forecast_amount'] / final_res['avg_actual_amount'])
-                final_res['Default % Error'] = 100.0 * abs(
-                    1 - final_res['avg_default_forecast_amount'] / final_res['avg_actual_amount'])
-                # final_res = final_res.fillna(0)
-                # st.write(final_res)
-                return final_res
-
-
-
+        concatenated_df = pd.concat(_results)
+        cohort_result_df = concatenated_df.groupby("cohort").mean().reset_index()
+        cohort_result_df["error_current"] = 100 * abs(
+            1 - cohort_result_df["current"] / cohort_result_df["actual"]
+        )
+        cohort_result_df["error_existing"] = 100 * abs(
+            1 - cohort_result_df["existing"] / cohort_result_df["actual"]
+        )
+        cohort_result_df["error_default"] = 100 * abs(
+            1 - cohort_result_df["default"] / cohort_result_df["actual"]
+        )
+        return cohort_result_df
 
 
 def aggregate_snapshot_numbers(snapshot_numbers):
@@ -416,3 +499,52 @@ def aggregate_snapshot_numbers(snapshot_numbers):
         [res.reset_index() for res in snapshot_numbers.values()]
     )
     return concatenated.groupby("date")[["Forecast", "Actual", "MAPE"]].mean()
+
+# def download_report(filename,cumulative_sum_df):
+#     if filename.endswith(".xlsx") == False:  # add file extension if it is forgotten
+#         filename = filename + ".xlsx"
+#     buffer = BytesIO()
+#     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+#         cumulative_sum_df.to_excel(writer, index=False, sheet_name='Report')
+#     return buffer, filename
+
+# def experiment_preforecast(experiment_name, cohort_information, future_df_, _exp_columns):
+#     if len(cohort_information.get(experiment_name, {})) > 0:
+#         cohort_df = cohort_information[experiment_name]['cohort_df'].copy()
+#         cohort_selected_features = cohort_information[experiment_name]["cohort_selected_features"]
+#         future_df_[cohort_selected_features] = future_df_[
+#             cohort_selected_features].fillna("None")
+#         future_df_ = (
+#             future_df_
+#             .merge(
+#                 cohort_df[
+#                     [*cohort_selected_features, "eff_probability"]
+#                 ],
+#                 on=cohort_selected_features,
+#                 how="left",
+#             )
+#             .rename(
+#                 columns={
+#                     "eff_probability": f"{experiment_name}_prob"
+#                 }
+#             )
+#             .copy()
+#         )
+#         temp = future_df_
+#         if cohort_df.iloc[0]["selected"] == False:
+#             ids = temp[
+#                 temp['deal_probability'] != temp['effective_probability']
+#                 ].index
+#             temp.loc[ids, f"{experiment_name}_prob"] = temp.loc[
+#                 ids, 'effective_probability']
+#         future_df_ = temp.copy()
+#
+#         _exp_columns.append(experiment_name)
+#
+#     if experiment_name == "Current":
+#         if len(st.session_state["forecast_results"].get("Current", {})) == 0:
+#             if experiment_name in _exp_columns:
+#                 _exp_columns.remove(experiment_name)
+#             continue
+#
+#     return
