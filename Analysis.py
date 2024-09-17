@@ -1311,3 +1311,4 @@ with main_pane:
 
         if len(st.session_state['final_all_sum_df']) > 0:
             st.write(st.session_state['final_all_sum_df'])
+
