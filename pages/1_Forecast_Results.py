@@ -1,5 +1,6 @@
 import streamlit as st
 import plotly.graph_objs as go
+from bokeh.themes import default
 from plotly.subplots import make_subplots
 from plotly import colors
 from dotenv import load_dotenv
@@ -31,6 +32,21 @@ from components import set_header
 import numpy as np
 import warnings
 
+# def load_session_state():
+#     query_params = st.query_params
+#     if 'data_period' in query_params:
+#         st.session_state['data_period'] = query_params['data_period'][0]
+#     if 'experiment' in query_params:
+#         st.session_state['experiment'] = query_params['experiment'][0]
+#     if 'reporting-experiments' in query_params:
+#         st.session_state['reporting-experiments'] = query_params['reporting-experiments'][0]
+#     if 'cohort_selected_features' in query_params:
+#         st.session_state['cohort_selected_features'] = query_params['cohort_selected_features'][0]
+#
+#
+# # Call this function at the beginning of the second page
+# load_session_state()
+
 st.set_page_config(layout="wide", page_title="Forecast Results", initial_sidebar_state="collapsed")
 set_header("Forecasting Simulation - Pipeline Analysis")
 with open("./styles.css") as f:
@@ -46,14 +62,17 @@ with left_pane:
         options=["Existing Approach", "Default"]
                 + st.session_state["all_experiments"],
         key="reporting-experiments",
+        default=["Existing Approach", "Default"],
     )
     st.selectbox(
         "Select Period",
         options=["Quarter", "6 Months", "1 Year"],
         key="period",
+        index=1
     )
     st.session_state['period_to_date'] = {"Quarter": "2024-10-01", "6 Months": "2025-01-01", "1 Year": "2025-07-01"}
-with main_pane:
+with (main_pane):
+    # st.write(st.session_state)
     if "sl_df" not in st.session_state:
         st.session_state["sl_df"] = pd.read_csv("sl_proportions.csv")
         st.session_state["sl_df"] = st.session_state["sl_df"][
@@ -76,25 +95,22 @@ with main_pane:
     )
 
     st.session_state["future_df_"] = st.session_state["future_df"]
-    # st.write(st.session_state["future_df_"])
+    st.write(st.session_state["cohort_information"])
+    st.write(st.session_state["future_df_"])
     _exp_columns = []
-    for experiment_name in ["Current"] + st.session_state[
-        "reporting-experiments"
-    ]:
-        if (
-                len(
-                    st.session_state["cohort_information"].get(
-                        experiment_name, {}
-                    )
-                )
-                > 0
-        ):
-            cohort_df = st.session_state["cohort_information"][
-                experiment_name
-            ]["cohort_df"]
-            cohort_selected_features = st.session_state[
-                "cohort_information"
-            ][experiment_name]["cohort_selected_features"]
+    for experiment_name in ["Current"] + st.session_state["reporting-experiments"]:
+        if len(st.session_state["cohort_information"].get(experiment_name, {})) > 0:
+            st.write("Experiment Name", experiment_name)
+            cohort_df = st.session_state["cohort_information"][experiment_name]["cohort_df"]
+            cohort_selected_features = st.session_state["cohort_information"][experiment_name][
+                "cohort_selected_features"]
+            st.session_state["future_df_"][cohort_selected_features] = st.session_state["future_df"][
+                cohort_selected_features
+            ].fillna(
+                "None"
+            )
+            # st.write("Cohort df", cohort_df)
+            # st.write("Before merge", st.session_state["future_df_"])
             st.session_state["future_df_"] = (
                 st.session_state["future_df_"]
                 .merge(
@@ -111,17 +127,20 @@ with main_pane:
                 )
                 .copy()
             )
+            temp = st.session_state['future_df_'].copy()
+
+            if cohort_df.iloc[0]['selected'] == False:
+                ids = temp[
+                    temp['deal_probability'] != temp['effective_probability']
+                    ].index
+                temp.loc[ids, f"{experiment_name}_prob"] = temp.loc[
+                    ids, 'effective_probability']
+            st.session_state["future_df_"] = temp.copy()
+            # st.write("After merge", st.session_state["future_df_"])
             _exp_columns.append(experiment_name)
 
         if experiment_name == "Current":
-            if (
-                    len(
-                        st.session_state["forecast_results"].get(
-                            "Current", {}
-                        )
-                    )
-                    == 0
-            ):
+            if len(st.session_state["forecast_results"].get("Current", {})) == 0:
                 if experiment_name in _exp_columns:
                     _exp_columns.remove(experiment_name)
                 continue
@@ -161,6 +180,21 @@ with main_pane:
         res[col] = res[col] * res["PROP"]
     if st.session_state["sl_selected"] != "Overall":
         res = res[res["NAME"] == st.session_state["sl_selected"]]
+
+    # res_ = res.copy()
+    # pivot_res = res_.pivot_table(index=['record_id', 'NAME'], columns='date', values='amount_Current',
+    #                              aggfunc='sum').reset_index().fillna(0)
+    #
+    # pivot_res.columns = [pd.to_datetime(col, errors='coerce') if col not in ['record_id', 'NAME'] else col for
+    #                      col in pivot_res.columns]
+    # date_columns = [col for col in pivot_res.columns if isinstance(col, pd.Timestamp)]
+    # years = sorted(set(col.year for col in date_columns))
+    #
+    # cumulative_sum_df = pivot_res.copy()
+    # for year in years:
+    #     year_columns = [col for col in date_columns if col.year == year]
+    #     cumulative_sum = pivot_res[year_columns].sum(axis=1)
+    #     cumulative_sum_df[f'Cumulative_{year}'] = cumulative_sum
     res = res.groupby("date")[amount_columns].sum().reset_index()
 
     fig = go.Figure()
@@ -231,3 +265,35 @@ with main_pane:
             )
             .format(precision=0, thousands=",")
         )
+    # with st.expander("Report"):
+    #     st.table(
+    #         # cumulative_sum_df.rename(
+    #         #     columns={
+    #         #         "amount": "Existing",
+    #         #         "date": "Date",
+    #         #         **{
+    #         #             f"amount_{e}": e
+    #         #             for e in st.session_state["reporting-experiments"]
+    #         #         },
+    #         #     }
+    #         # )
+    #     cumulative_sum_df
+    #         .style.set_table_styles(
+    #             [
+    #                 {
+    #                     "selector": "thead  th",
+    #                     "props": "background-color: #2d7dce; text-align:center; color: white;font-size:0.9rem;border-bottom: 1px solid black !important;",
+    #                 },
+    #                 {
+    #                     "selector": "tbody  th",
+    #                     "props": "font-weight:bold;font-size:0.9rem;color:#000;",
+    #                 },
+    #                 {
+    #                     "selector": "tbody  tr:nth-child(2n + 2)",
+    #                     "props": "background-color: #aacbec;",
+    #                 },
+    #             ],
+    #             overwrite=False,
+    #         )
+    #         .format(precision=0, thousands=",")
+    #     )

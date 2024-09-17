@@ -1,6 +1,6 @@
 import streamlit as st
 import plotly.graph_objs as go
-from bokeh.core.property.vectorization import value
+from io import BytesIO
 from plotly.subplots import make_subplots
 from plotly import colors
 from dotenv import load_dotenv
@@ -8,7 +8,7 @@ from scipy.optimize import minimize
 from snowflake_utils import (
     convert_period_to_dates,
     convert_dates_to_string,
-    fetch_data_from_db,
+    fetch_data_from_db, fetch_weightages,
 )
 import pandas as pd
 from data_utils import (
@@ -65,8 +65,9 @@ def format_period_text(period):
 
 def fetch_and_forecast_experiment(experiment_name):
     exp_df = convert_to_cohort_df(fetch_experiment("karthik", experiment_name))
+    exp_df['selected'] = exp_df.selected.map({1: True, 0: False})
     cohort_selected_features = list(
-        exp_df.drop(["cohort", "eff_probability"], axis=1).columns
+        exp_df.drop(["cohort", "eff_probability", "selected"], axis=1).columns
     )
 
     st.session_state["cohort_information"][experiment_name] = {}
@@ -86,6 +87,18 @@ def fetch_and_forecast_experiment(experiment_name):
     _df = _df.merge(exp_df, on=cohort_selected_features, how="left").copy()
 
     _df["final_probability"] = _df["eff_probability"].fillna(0)
+    temp = _df.copy()
+
+    if exp_df.iloc[0]['selected'] == False:
+        ids = temp[
+            temp['deal_probability'] != temp['effective_probability']
+            ].index
+        temp.loc[ids, 'final_probability'] = temp.loc[
+            ids, 'effective_probability']
+
+        temp.loc[ids, 'cohort'] = 'cohort 0'
+
+    _df = temp.copy()
     forecast_results = calculate_forecasts(
         _df, ["final_probability"], ["amount"], "2024-07-01"
     )
@@ -135,7 +148,16 @@ def pull_data():
 
 def cohort_generate_forecast(experiment_name="Current"):
     # st.write(st.session_state["cohort_df"])
+    st.session_state["cohort_information"]["Current"] = {}
+    # st.session_state["cohort_information"]["Current"]["cohort_df"] = (
+    #     st.session_state["cohort_df"].copy()
+    # )
     st.session_state["cohort_df"] = edited_data.copy()
+    st.session_state["cohort_information"]["Current"]["cohort_df"] = (
+        st.session_state["cohort_df"].copy()
+    )
+    st.session_state["cohort_information"]["Current"]['cohort_selected_features'] = st.session_state[
+        "cohort_selected_features"].copy()
     st.session_state["active_df"] = st.session_state["data_df"].copy()
     st.session_state["active_df"][
         st.session_state.get("cohort_selected_features", [])
@@ -144,15 +166,13 @@ def cohort_generate_forecast(experiment_name="Current"):
     ].fillna(
         "None"
     )
-    st.session_state["active_df"] = (
-        st.session_state["active_df"]
-        .merge(
-            edited_data,
-            on=st.session_state.get("cohort_selected_features", []),
-            how="left",
-        )
-        .copy()
-    )
+    st.session_state["active_df"] = (st.session_state["active_df"].merge
+        (
+        edited_data,
+        on=st.session_state.get("cohort_selected_features", []),
+        how="left",
+    )).copy()
+
     # st.write(st.session_state["active_df"])
     st.session_state["active_df"]["final_probability"] = st.session_state[
         "active_df"
@@ -183,7 +203,9 @@ def cohort_generate_forecast(experiment_name="Current"):
         ["amount"],
         "2024-07-01",
     )
-
+    # for key, value in forecast_results.items():
+    #     st.write(key)
+    #     st.write(value)
     st.session_state["forecast_results"]["Current"] = forecast_results.copy()
     st.session_state["update_probabilities_clicked"] = True
 
@@ -256,6 +278,7 @@ def save_experiment_to_db():
 #         "cohort_selected_features"
 #     ] = selected_features.copy()
 #     enable_save_experiment()
+
 def cohorts_update(selected_features):
     if len(selected_features) == 0:
         st.session_state["cohort_df"] = pd.DataFrame()
@@ -277,8 +300,8 @@ def cohorts_update(selected_features):
 
     if "deal_stage" in selected_features:
         deal_stage_and_probability_dict = (
-            st.session_state["data_df"]
-            .set_index("deal_stage")["deal_probability"]
+            st.session_state["weights_df"]
+            .set_index("deal_stage")["weightage"]
             .to_dict()
         )
         # print("Deal stage and probability dict: ", deal_stage_and_probability_dict)
@@ -314,13 +337,13 @@ def cohorts_update(selected_features):
         "None"
     )
     st.session_state["disable_calculations"] = False
-    st.session_state["cohort_information"]["Current"] = {}
-    st.session_state["cohort_information"]["Current"]["cohort_df"] = (
-        st.session_state["cohort_df"].copy()
-    )
-    st.session_state["cohort_information"]["Current"][
-        "cohort_selected_features"
-    ] = selected_features.copy()
+    # st.session_state["cohort_information"]["Current"] = {}
+    # st.session_state["cohort_information"]["Current"]["cohort_df"] = (
+    #     st.session_state["cohort_df"].copy()
+    # )
+    # st.session_state["cohort_information"]["Current"][
+    #     "cohort_selected_features"
+    # ] = selected_features.copy()
     enable_save_experiment()
 
 
@@ -343,24 +366,6 @@ def calculate_current_vs_act_error(eff_probabilities, temp, cohorts, actuals):
 
 
 def optimize_eff_probability(max_iter, progress_bar, progress_text):
-    # selected_cohort_df = st.session_state["cohort_df"][st.session_state["cohort_df"]["selected"]].copy()
-    # st.session_state["active_df"] = st.session_state["data_df"].copy()
-    # st.session_state["active_df"][st.session_state.get("cohort_selected_features", [])] = st.session_state["active_df"][
-    #     st.session_state.get("cohort_selected_features", [])].fillna("None")
-    #
-    # st.session_state["active_df"] = st.session_state["active_df"].merge(
-    #     st.session_state['cohort_df'][st.session_state['cohort_df'].cohort != 'cohort 0'],
-    #     on=st.session_state.get("cohort_selected_features", []),
-    #     how="left"
-    # ).copy()
-    #
-    # temp = st.session_state['active_df'].copy()
-    # if edited_data.iloc[0]['selected']:
-    #     ids = temp[temp['deal_probability'] != temp['effective_probability']].index
-    #     temp.loc[ids, 'final_probability'] = temp.loc[ids, 'effective_probability']
-    #     temp.loc[ids, 'cohort'] = 'cohort
-
-    selected_cohort_df = st.session_state["cohort_df"][st.session_state["cohort_df"]["selected"]].copy()
     st.session_state["cohort_df"] = edited_data.copy()
     st.session_state["active_df"] = st.session_state["data_df"].copy()
     st.session_state["active_df"][
@@ -501,10 +506,16 @@ if "cohort_df" not in st.session_state:
 if "data_df" not in st.session_state:
     pull_data()
 
+if 'weights_df' not in st.session_state:
+    st.session_state["weights_df"] = fetch_weightages()
+    st.session_state["weights_df"].columns = [col.lower() for col in st.session_state["weights_df"].columns]
+    st.session_state["weights_df"]["weightage"] = st.session_state["weights_df"]["weightage"].astype(float)
+
 if "optimization_done" not in st.session_state:
     st.session_state["optimization_done"] = False
 
 if "selected" not in st.session_state["cohort_df"]:
+    # st.write("In IF loop")
     st.session_state["cohort_df"]["selected"] = True
 
 if "future_df" not in st.session_state:
@@ -545,39 +556,50 @@ if "cohort_information" not in st.session_state:
 if "selected_experiment_name" not in st.session_state:
     st.session_state["selected_experiment_name"] = "Existing Approach"
 
+if "final_all_sum_df" not in st.session_state:
+    st.session_state["final_all_sum_df"] = pd.DataFrame()
+
 # left_pane, main_pane, right_pane = st.columns((0.2, 0.6, 0.2))
 left_pane, main_pane = st.columns((0.25, 0.75))
 
 with left_pane:
     # Dropdown for period selection
-    if not st.session_state.get("enter-custom-dates", False):
-        st.selectbox(
-            "Data Period",
-            options=[1, 3, 6],
-            key="data_period",
-            format_func=format_period_text,
-            index=2,
-        )
-    else:
-        st.text_input(
-            "Data Period",
-            placeholder="type in simple english",
-            key="data_period_text",
-        )
+    # if not st.session_state.get("enter-custom-dates", False):
+    #     st.selectbox(
+    #         "Data Period",
+    #         options=[1, 3, 6],
+    #         key="data_period",
+    #         format_func=format_period_text,
+    #         index=2,
+    #     )
+    # else:
+    #     st.text_input(
+    #         "Data Period",
+    #         placeholder="type in simple english",
+    #         key="data_period_text",
+    #     )
+    #
+    # st.checkbox(
+    #     "Enter Custom Dates",
+    #     key="enter-custom-dates",
+    # )
 
-    st.checkbox(
-        "Enter Custom Dates",
-        key="enter-custom-dates",
-    )
+    # st.markdown(
+    #     "<div class='date-period-text'>Selected Period : Jun 2024</div>",
+    #     unsafe_allow_html=True,
+    # )
 
-    st.markdown(
-        "<div class='date-period-text'>Selected Period : Jun 2024</div>",
-        unsafe_allow_html=True,
+    st.selectbox(
+        "Data Period",
+        options=[1, 3, 6],
+        key="data_period",
+        format_func=format_period_text,
+        index=2,
     )
 
     st.button("Fetch Data", on_click=pull_data)
 
-    st.divider()
+    # st.divider()
 
     st.text_input(
         "Save Experiment",
@@ -609,6 +631,37 @@ with left_pane:
                 + st.session_state["all_experiments"],
         key="reporting-experiments",
     )
+
+    st.divider()
+
+    st.selectbox(
+        "Select Period",
+        options=["Quarter", "6 Months", "1 Year"],
+        key="period",
+        index=1
+    )
+    st.session_state['period_to_date'] = {"Quarter": "2024-10-01", "6 Months": "2025-01-01", "1 Year": "2025-07-01"}
+
+    st.selectbox(
+        "Select Experiment for report",
+        options=['Current', 'Existing Approach', 'Default'] + st.session_state["all_experiments"],
+        key='selected_report_experiment',
+        index=None,
+    )
+
+    # if st.session_state['selected_report_experiment'] != None and len(st.session_state['cumulative_sum_df']) > 0:
+    #     file_name = f"{st.session_state['selected_report_experiment']}_{st.session_state['period']}.xlsx"
+    #     output = BytesIO()
+    #     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+    #         st.session_state['cumulative_sum_df'].to_excel(writer, index=False, sheet_name='Sheet1')
+    #         processed_data = output.getvalue()
+    #         writer.close()
+    #     st.download_button(
+    #         label="Download Report",
+    #         data=processed_data,
+    #         file_name=file_name,
+    #         mime="application/vnd.ms-excel",
+    #     )
 
 with main_pane:
     st.subheader("Cohort Creation")
@@ -680,6 +733,9 @@ with main_pane:
 
         # if 'active_df' in st.session_state:
         #     st.write(st.session_state['active_df'])
+        #     # st.write(st.session_state['active_df'][
+        #     #              st.session_state['active_df']['deal_probability'] != st.session_state['active_df'][
+        #     #                  'final_probability']])
 
         max_iter = st.number_input(
             "Max Iterations",
@@ -705,7 +761,7 @@ with main_pane:
             st.session_state["optimization_successful"] = False
 
         # st.write(st.session_state['active_df'])
-
+        # st.write(st.session_state["cohort_df"])
         st.button(
             "Reset Probabilities",
             on_click=reset_probabilities,
@@ -1004,69 +1060,40 @@ with main_pane:
             if "sl_df" not in st.session_state:
                 st.session_state["sl_df"] = pd.read_csv("sl_proportions.csv")
                 st.session_state["sl_df"] = st.session_state["sl_df"][
-                    ~st.session_state["sl_df"].ASSOCIATED_DEAL_IDS.isna()
-                ].copy()
-                st.session_state["sl_df"][
-                    "ASSOCIATED_DEAL_IDS"
-                ] = st.session_state["sl_df"]["ASSOCIATED_DEAL_IDS"].apply(
-                    lambda x: str(x).replace(".0", "")
-                )
-                st.session_state["sl_list"] = sorted(
-                    list(st.session_state["sl_df"].NAME.unique())
-                )
-            st.selectbox(
-                "Service line",
-                options=["Overall"] + st.session_state["sl_list"],
-                key="sl_selected",
-                index=0,
-            )
+                    ~st.session_state["sl_df"].ASSOCIATED_DEAL_IDS.isna()].copy()
+                st.session_state["sl_df"]["ASSOCIATED_DEAL_IDS"] = st.session_state["sl_df"][
+                    "ASSOCIATED_DEAL_IDS"].apply(lambda x: str(x).replace(".0", ""))
+                st.session_state["sl_list"] = sorted(st.session_state["sl_df"].NAME.unique())
 
-            st.session_state["future_df_"] = st.session_state["future_df"]
+            st.selectbox("Service line", options=["Overall"] + st.session_state["sl_list"], key="sl_selected", index=0)
+
+            st.session_state["future_df_"] = st.session_state["future_df"].copy()
             _exp_columns = []
-            for experiment_name in ["Current"] + st.session_state[
-                "reporting-experiments"
-            ]:
-                if (
-                        len(
-                            st.session_state["cohort_information"].get(
-                                experiment_name, {}
-                            )
-                        )
-                        > 0
-                ):
-                    cohort_df = st.session_state["cohort_information"][
-                        experiment_name
-                    ]["cohort_df"]
-                    cohort_selected_features = st.session_state[
-                        "cohort_information"
-                    ][experiment_name]["cohort_selected_features"]
-                    st.session_state["future_df_"] = (
-                        st.session_state["future_df_"]
-                        .merge(
-                            cohort_df[
-                                [*cohort_selected_features, "eff_probability"]
-                            ],
-                            on=cohort_selected_features,
-                            how="left",
-                        )
-                        .rename(
-                            columns={
-                                "eff_probability": f"{experiment_name}_prob"
-                            }
-                        )
-                        .copy()
-                    )
+
+            for experiment_name in ["Current"] + st.session_state["reporting-experiments"]:
+                cohort_info = st.session_state["cohort_information"].get(experiment_name, {})
+                if cohort_info:
+                    cohort_df = cohort_info["cohort_df"]
+                    cohort_selected_features = cohort_info["cohort_selected_features"]
+                    st.session_state["future_df_"][cohort_selected_features] = st.session_state["future_df_"][
+                        cohort_selected_features].fillna("None")
+                    st.session_state["future_df_"] = st.session_state["future_df_"].merge(
+                        cohort_df[cohort_selected_features + ["eff_probability"]],
+                        on=cohort_selected_features,
+                        how="left"
+                    ).rename(columns={"eff_probability": f"{experiment_name}_prob"})
+
+                    if not cohort_df.iloc[0]["selected"]:
+                        ids = st.session_state["future_df_"][
+                            st.session_state["future_df_"]['deal_probability'] != st.session_state["future_df_"][
+                                'effective_probability']].index
+                        st.session_state["future_df_"].loc[ids, f"{experiment_name}_prob"] = \
+                            st.session_state["future_df_"].loc[ids, 'effective_probability']
+
                     _exp_columns.append(experiment_name)
 
                 if experiment_name == "Current":
-                    if (
-                            len(
-                                st.session_state["forecast_results"].get(
-                                    "Current", {}
-                                )
-                            )
-                            == 0
-                    ):
+                    if len(st.session_state["forecast_results"].get("Current", {})) == 0:
                         if experiment_name in _exp_columns:
                             _exp_columns.remove(experiment_name)
                         continue
@@ -1083,24 +1110,14 @@ with main_pane:
                     "amount_Default",
                     *[f"amount_{e}" for e in _exp_columns],
                 ],
-                "2025-07-01",
+                st.session_state['period_to_date'][st.session_state['period']],
                 rename=False,
             )
 
-            res = pd.concat(
-                [
-                    list(d.values())[0].set_index(["record_id", "date"])
-                    for d in forecast_results
-                ],
-                axis=1,
-            ).reset_index()
+            res = pd.concat([list(d.values())[0].set_index(["record_id", "date"]) for d in forecast_results],
+                            axis=1).reset_index()
             res.date = res.date.dt.date
-            res = res.merge(
-                st.session_state["sl_df"],
-                left_on="record_id",
-                right_on="ASSOCIATED_DEAL_IDS",
-                how="left",
-            )
+            res = res.merge(st.session_state["sl_df"], left_on="record_id", right_on="ASSOCIATED_DEAL_IDS", how="left")
             amount_columns = [c for c in res.columns if c.startswith("amount")]
             for col in amount_columns:
                 res[col] = res[col] * res["PROP"]
@@ -1110,18 +1127,9 @@ with main_pane:
 
             fig = go.Figure()
 
-            for i, experiment_name in enumerate(
-                    ["Current"] + st.session_state["reporting-experiments"]
-            ):
+            for i, experiment_name in enumerate(["Current"] + st.session_state["reporting-experiments"]):
                 if experiment_name == "Current":
-                    if (
-                            len(
-                                st.session_state["forecast_results"].get(
-                                    "Current", {}
-                                )
-                            )
-                            == 0
-                    ):
+                    if len(st.session_state["forecast_results"].get("Current", {})) == 0:
                         continue
                 fig.add_trace(
                     go.Scatter(
@@ -1176,3 +1184,130 @@ with main_pane:
                 )
                 .format(precision=0, thousands=",")
             )
+
+        with st.expander("Future Report"):
+            st.session_state["future_df_"] = st.session_state["future_df"].copy()
+            experiment_name = st.session_state['selected_report_experiment']
+            _exp_columns = []
+
+            if experiment_name in st.session_state["cohort_information"]:
+                cohort_info = st.session_state["cohort_information"][experiment_name]
+                cohort_df = cohort_info["cohort_df"]
+                cohort_selected_features = cohort_info["cohort_selected_features"]
+
+                st.session_state["future_df_"][cohort_selected_features] = st.session_state["future_df_"][
+                    cohort_selected_features].fillna("None")
+                st.session_state["future_df_"] = st.session_state["future_df_"].merge(
+                    cohort_df[cohort_selected_features + ["eff_probability"]],
+                    on=cohort_selected_features,
+                    how="left"
+                ).rename(columns={"eff_probability": f"{experiment_name}_prob"})
+
+                if not cohort_df.iloc[0]["selected"]:
+                    ids = st.session_state["future_df_"][
+                        st.session_state["future_df_"]['deal_probability'] != st.session_state["future_df_"][
+                            'effective_probability']].index
+                    st.session_state["future_df_"].loc[ids, f"{experiment_name}_prob"] = \
+                        st.session_state["future_df_"].loc[ids, 'effective_probability']
+
+                _exp_columns.append(experiment_name)
+
+            forecast_results = calculate_forecasts(
+                st.session_state["future_df_"],
+                ["final_probability", "deal_probability"] + [f"{e}_prob" for e in _exp_columns],
+                ["amount_Existing Approach", "amount_Default"] + [f"amount_{e}" for e in _exp_columns],
+                st.session_state['period_to_date'][st.session_state['period']],
+                rename=False
+            )
+
+            res = pd.concat([list(d.values())[0].set_index(["record_id", "date"]) for d in forecast_results],
+                            axis=1).reset_index()
+            res.date = res.date.dt.date
+            res = res.merge(st.session_state["sl_df"], left_on="record_id", right_on="ASSOCIATED_DEAL_IDS", how="left")
+            amount_columns = [c for c in res.columns if c.startswith("amount")]
+            for col in amount_columns:
+                res[col] = res[col] * res["PROP"]
+
+            res_ = res.merge(
+                st.session_state['future_df_'][
+                    ['record_id', 'customer_segment', 'associated_company', 'deal_name', 'deal_stage', 'pipeline']],
+                on='record_id',
+                how='left'
+            ).fillna('Unassigned')
+
+            map_deal_pipeline = {
+                '0_new': 'Pipeline 0-2', '1_connected_to_meet': 'Pipeline 0-2', '2_needs_expressed': 'Pipeline 0-2',
+                '3_connected_to_solution': 'Pipeline 3-6', '4_proposal_presented': 'Pipeline 3-6',
+                '5_verbal_agreement': 'Pipeline 3-6',
+                '6_contracting': 'Pipeline 3-6', '7_closed_won': '7_closed_lost', '7_closed_lost': 'Backlog'
+            }
+            res_['Category'] = res_['deal_stage'].map(map_deal_pipeline)
+            st.session_state['res_'] = res_.copy()
+
+            if experiment_name:
+                pivot_res = res_.pivot_table(
+                    index=['Category', 'pipeline', 'associated_company', 'record_id', 'deal_name', 'deal_stage',
+                           'customer_segment',
+                           'NAME'],
+                    columns='date',
+                    values=f'amount_{experiment_name}',
+                    aggfunc='sum'
+                ).reset_index().fillna(0)
+
+                pivot_res.columns = [
+                    pd.to_datetime(col, errors='coerce') if col not in ['Category', 'pipeline', 'associated_company',
+                                                                        'record_id',
+                                                                        'deal_name',
+                                                                        'deal_stage', 'customer_segment',
+                                                                        'NAME', ]
+                    else col for col in pivot_res.columns]
+                date_columns = [col for col in pivot_res.columns if isinstance(col, pd.Timestamp)]
+                years = sorted(set(col.year for col in date_columns))
+
+                cumulative_sum_df = pivot_res.copy()
+                for year in years:
+                    year_columns = [col for col in date_columns if col.year == year]
+                    cumulative_sum_df[f'Cumulative_{year}'] = pivot_res[year_columns].sum(axis=1)
+                st.session_state['final_all_sum_df'] = cumulative_sum_df.copy()
+
+                client_view = cumulative_sum_df.drop(columns=['pipeline'])
+                client_view = client_view.rename(columns={
+                    'associated_company': 'COMPANY', 'record_id': 'HUBSPOT_ID', 'deal_name': "DEAL",
+                    'deal_stage': 'STAGE', 'customer_segment': "SEGMENT", 'NAME': 'SERVICE'
+                })
+
+                st.markdown(f"<div class='selected-snapshot'>Selected Experiment for Report : {experiment_name}</div>",
+                            unsafe_allow_html=True)
+                col1, _ = st.columns(2)
+                with col1:
+                    filename = st.text_input('Enter Excel file name (e.g. email_data.xlsx)')
+                if filename:
+                    if not filename.endswith(".xlsx"):
+                        filename += ".xlsx"
+                    # st.session_state['filename'] = filename
+                    buffer = BytesIO()
+                    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                        client_view.to_excel(writer, index=False, sheet_name='Report')
+                    st.download_button(label="Download Report", data=buffer.getvalue(), file_name=filename,
+                                       mime="application/vnd.ms-excel")
+
+                st.table(
+                    cumulative_sum_df.style.set_table_styles
+                        (
+                        [
+                            {
+                                "selector": "thead  th",
+                                "props": "background-color: #2d7dce; text-align:center; color: white;font-size:0.9rem;border-bottom: 1px solid black !important;",
+                            },
+                            {
+                                "selector": "tbody  th",
+                                "props": "font-weight:bold;font-size:0.9rem;color:#000;",
+                            },
+                        ],
+                        overwrite=False,
+                    )
+                    .format(precision=0, thousands=",")
+                )
+
+        if len(st.session_state['final_all_sum_df']) > 0:
+            st.write(st.session_state['final_all_sum_df'])

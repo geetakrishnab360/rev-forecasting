@@ -13,8 +13,8 @@ def insert_experiment_into_db(
     cohort_details = [cohort_features] + cohort_values.tolist()
     probabilities = [0] + cohort_df["eff_probability"].tolist()
     num_cohorts = len(probabilities)
-    print(cohort_details)
-    print(probabilities)
+    # print(cohort_details)
+    # print(probabilities)
     values = list(
         zip(
             [user] * (num_cohorts + 1),
@@ -27,7 +27,7 @@ def insert_experiment_into_db(
     sql_query = f"""INSERT INTO cohorts VALUES {','.join(['(' +','.join([
         f"'{c}'" if isinstance(c, str) else str(c) for c in v]) + ')' for v in values])}"""
 
-    print(sql_query)
+    # print(sql_query)
     conn = sqlite3.connect(os.environ["DB_NAME"])
     c = conn.cursor()
     c.execute(sql_query)

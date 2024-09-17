@@ -15,7 +15,7 @@ import streamlit as st
 #         warehouse=os.environ["SNOWFLAKE_WAREHOUSE"],
 #         role=role,
 #     )
-    
+
 def create_snowflake_connection():
     con = connector.connect(
         user=os.environ["SNOWFLAKE_USER"],
@@ -87,6 +87,8 @@ def fetch_data_from_db(dates, later=True):
             snapshot_date,
             record_id,
             deal_name,
+            customer_segment,
+            associated_company,
             deal_probability,
             AMOUNT_IN_COMPANY_CURRENCY,
             ENGAGEMENT_TYPE,
@@ -134,3 +136,62 @@ def fetch_data_from_db(dates, later=True):
     except Exception as e:
         print(e)
         pass
+
+@st.cache_data()
+def fetch_weightages():
+    print("[INFO] fetching weightages from SNOWFLAKE")
+    sql_query = f"""
+    WITH cte AS
+    (
+        SELECT
+            CASE
+            WHEN deal_stage = '7- Closed Won' THEN '7_closed_won'
+            WHEN deal_stage = 'Closed Won' THEN '7_closed_won'
+            WHEN deal_stage = 'Closed won' THEN '7_closed_won'
+            WHEN deal_stage = '7 - Closed Won' THEN '7_closed_won'
+            WHEN deal_stage = '7- Closed Lost' THEN '7_closed_lost'
+            WHEN deal_stage = 'Closed Dead' THEN '7_closed_lost'
+            WHEN deal_stage = 'Closed Lost' THEN '7_closed_lost'
+            WHEN deal_stage = 'Closed lost' THEN '7_closed_lost'
+            WHEN deal_stage = '7 - Closed Dead' THEN '7_closed_lost'
+            WHEN deal_stage = '7 - Closed Lost' THEN '7_closed_lost'
+            WHEN deal_stage = '6- Contracting' THEN '6_contracting'
+            WHEN deal_stage = 'Contracting' THEN '6_contracting'
+            WHEN deal_stage = '5- Verbal Agreement' THEN '5_verbal_agreement'
+            WHEN deal_stage = 'Verbal Agreement' THEN '5_verbal_agreement'
+            WHEN deal_stage = '4- Proposal Presented' THEN '4_proposal_presented'
+            WHEN deal_stage = '4 - Proposal ' THEN '4_proposal_presented'
+            WHEN deal_stage = '3- Qualified Opportunity' THEN '3_qualified_oppurtunity'
+            WHEN deal_stage = 'Qualified Opportunity' THEN '3_qualified_oppurtunity'
+            WHEN deal_stage = '3 - Qualified Opportunity (NDA + RATE CARD sent)' THEN '3_qualified_oppurtunity'
+            WHEN deal_stage = 'Proposal' THEN '4_proposal_presented'
+            WHEN deal_stage = '2 - Needs Expressed' THEN '2_needs_expressed'
+            WHEN deal_stage = '2- Needs Expressed' THEN '2_needs_expressed'
+            WHEN deal_stage = 'Needs Expressed' THEN '2_needs_expressed'
+            WHEN deal_stage = '1- Connected to Meet' THEN '1_connected_to_meet'
+            WHEN deal_stage = '1 - Connected to Meet' THEN '1_connected_to_meet'
+            WHEN deal_stage = 'Connected to Meet' THEN '1_connected_to_meet'
+            WHEN deal_stage = '0- New' THEN '0_new'
+            WHEN deal_stage = '0 - New ' THEN '0_new'
+            WHEN deal_stage = 'Discovery' THEN '0_new'
+            WHEN deal_stage = 'Business Considerations' THEN '0_new'
+            WHEN deal_stage = 'Pricing and Terms' THEN '4_proposal_presented'
+            WHEN deal_stage = 'Solution Demo' THEN '4_proposal_presented'
+            END AS deal_stage,
+            weightage from DSX_DASHBOARDS.HUBSPOT_RAW.WEIGHTAGE)
+        SELECT * from cte WHERE deal_stage NOT IN ('7_closed_won', '7_closed_lost')
+        """.strip()
+
+    try:
+        conn = create_snowflake_connection()
+        cur = conn.cursor()
+        cur.execute(sql_query)
+        data = pd.DataFrame(
+            cur.fetchall(), columns=[desc[0] for desc in cur.description]
+        )
+        conn.close()
+        return data
+    except Exception as e:
+        print(e)
+        pass
+    return None

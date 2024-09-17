@@ -4,6 +4,7 @@ import numpy as np
 from collections import OrderedDict
 import streamlit as st
 from datetime import datetime
+from io import BytesIO
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -11,7 +12,7 @@ warnings.filterwarnings("ignore")
 
 def prepare_actual_rev_data():
     actual_df = pd.read_excel(
-        r"C:\Users\KarthikKurugodu\PycharmProjects\sso-sf-connec\actuals.xlsx"
+        r"data/actuals.xlsx"
     )
     actual_df.columns = [
         "hubspot_id",
@@ -44,19 +45,24 @@ def prepare_actual_rev_data():
 
 
 def convert_to_cohort_df(experiemnt_df):
+    # print("******************Experiment df******************")
+    # print(experiemnt_df)
     features = experiemnt_df["columns"].str.split(
         "|",
         expand=True,
         regex=False,
     )
+    # print("******************Features******************")
+    # print(features)
     features.columns = features.iloc[0]
     features = features.iloc[1:]
     features["eff_probability"] = (
         experiemnt_df["probabilities"].iloc[1:].copy()
     )
+    features["selected"] = experiemnt_df["selected"].iloc[1:].copy()
     features = features.reset_index(drop=True)
     features["cohort"] = pd.Series(
-        [f"cohort {i}" for i in range(1, len(experiemnt_df))]
+        [f"cohort {i}" for i in range(0, len(experiemnt_df)-1)]
     )
     # features.columns = features.iloc[0]
     # features.drop(0, inplace=True)
@@ -336,9 +342,7 @@ def _calculate_snapshot_monthly_number(date_string, experiment_name):
                     ].copy()
 
                 mapping = {}
-                for i, m in enumerate(
-                        forecast_df.date.drop_duplicates().sort_values()
-                ):
+                for i, m in enumerate(forecast_df.date.drop_duplicates().sort_values()):
                     mapping[m] = f"M{i + 1}"
                 forecast_df.date = forecast_df.date.map(mapping)
                 _act.date = _act.date.map(mapping)
@@ -440,7 +444,9 @@ def calculate_cohort_error(date_string, experiment_name):
 
             forecasts_data = forecasts_data.merge(
                 _act, on="record_id", how="left"
-            ).fillna(0.0)
+            )
+            # st.write("Before filling NA:", forecasts_data)
+            forecasts_data = forecasts_data.fillna(0.0)
             forecasts_data = forecasts_data.merge(
                 existing_forecasts[d]
                 .groupby("record_id")
@@ -474,9 +480,7 @@ def calculate_cohort_error(date_string, experiment_name):
             forecasts_data = forecasts_data.set_index("cohort")
             _results.append(forecasts_data.copy())
 
-        # st.write(_results)
         concatenated_df = pd.concat(_results)
-        # st.write(concatenated_df)
         cohort_result_df = concatenated_df.groupby("cohort").mean().reset_index()
         cohort_result_df["error_current"] = 100 * abs(
             1 - cohort_result_df["current"] / cohort_result_df["actual"]
@@ -495,3 +499,52 @@ def aggregate_snapshot_numbers(snapshot_numbers):
         [res.reset_index() for res in snapshot_numbers.values()]
     )
     return concatenated.groupby("date")[["Forecast", "Actual", "MAPE"]].mean()
+
+# def download_report(filename,cumulative_sum_df):
+#     if filename.endswith(".xlsx") == False:  # add file extension if it is forgotten
+#         filename = filename + ".xlsx"
+#     buffer = BytesIO()
+#     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+#         cumulative_sum_df.to_excel(writer, index=False, sheet_name='Report')
+#     return buffer, filename
+
+# def experiment_preforecast(experiment_name, cohort_information, future_df_, _exp_columns):
+#     if len(cohort_information.get(experiment_name, {})) > 0:
+#         cohort_df = cohort_information[experiment_name]['cohort_df'].copy()
+#         cohort_selected_features = cohort_information[experiment_name]["cohort_selected_features"]
+#         future_df_[cohort_selected_features] = future_df_[
+#             cohort_selected_features].fillna("None")
+#         future_df_ = (
+#             future_df_
+#             .merge(
+#                 cohort_df[
+#                     [*cohort_selected_features, "eff_probability"]
+#                 ],
+#                 on=cohort_selected_features,
+#                 how="left",
+#             )
+#             .rename(
+#                 columns={
+#                     "eff_probability": f"{experiment_name}_prob"
+#                 }
+#             )
+#             .copy()
+#         )
+#         temp = future_df_
+#         if cohort_df.iloc[0]["selected"] == False:
+#             ids = temp[
+#                 temp['deal_probability'] != temp['effective_probability']
+#                 ].index
+#             temp.loc[ids, f"{experiment_name}_prob"] = temp.loc[
+#                 ids, 'effective_probability']
+#         future_df_ = temp.copy()
+#
+#         _exp_columns.append(experiment_name)
+#
+#     if experiment_name == "Current":
+#         if len(st.session_state["forecast_results"].get("Current", {})) == 0:
+#             if experiment_name in _exp_columns:
+#                 _exp_columns.remove(experiment_name)
+#             continue
+#
+#     return

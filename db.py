@@ -12,6 +12,7 @@ def insert_experiment_into_db(
     cohort_features = "|".join(selected_features)
     cohort_details = [cohort_features] + cohort_values.tolist()
     probabilities = [0] + cohort_df["eff_probability"].tolist()
+    selected = [True] + cohort_df["selected"].tolist()
     num_cohorts = len(probabilities)
     # print(cohort_details)
     # print(probabilities)
@@ -22,6 +23,7 @@ def insert_experiment_into_db(
             range(1, num_cohorts + 1),
             cohort_details,
             probabilities,
+            selected,
         )
     )
     sql_query = f"""INSERT INTO cohorts VALUES {','.join(['(' +','.join([
@@ -58,7 +60,8 @@ def create_database():
                 experiment varchar(50) not null,
                 rank int not null,
                 columns varchar(1000) not null,
-                probabilities real not null
+                probabilities real not null,
+                selected boolean not null
             );
             """
     )
@@ -88,7 +91,7 @@ def fetch_experiment(user, experiment):
     c = conn.cursor()
     c.execute(
         f"""
-              SELECT rank, columns, probabilities FROM cohorts
+              SELECT rank, columns, probabilities, selected FROM cohorts
               WHERE user = '{user}'
               AND experiment = '{experiment}'
               ORDER BY 1 ASC
