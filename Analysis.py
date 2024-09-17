@@ -31,8 +31,6 @@ from db import (
 from components import set_header
 import numpy as np
 import warnings
-from streamlit_navigation_bar import st_navbar
-
 warnings.filterwarnings("ignore")
 
 # from db import fetch_experiment
@@ -89,7 +87,7 @@ def fetch_and_forecast_experiment(experiment_name):
     _df["final_probability"] = _df["eff_probability"].fillna(0)
     temp = _df.copy()
 
-    if exp_df.iloc[0]['selected'] == False:
+    if not exp_df.iloc[0]['selected']:
         ids = temp[
             temp['deal_probability'] != temp['effective_probability']
             ].index
@@ -131,10 +129,7 @@ def pull_data():
         start_date, end_date = convert_period_to_dates(
             st.session_state.get("data_period", 6)
         )
-
-    st.session_state["dates_string"] = convert_dates_to_string(
-        start_date, end_date
-    )
+        st.session_state["dates_string"] = convert_dates_to_string(start_date, end_date)
 
     data = fetch_data_from_db(st.session_state["dates_string"])
 
@@ -466,6 +461,7 @@ def optimize_eff_probability(max_iter, progress_bar, progress_text):
             "2024-07-01",
         )
         st.session_state["forecast_results"]["Current"] = forecast_results.copy()
+        st.session_state['cohort_information']['Current']['cohort_df'] = st.session_state["cohort_df"].copy()
         # print(forecast_results)
         st.rerun()
         # st.write(forecast_results)
@@ -649,19 +645,7 @@ with left_pane:
         index=None,
     )
 
-    # if st.session_state['selected_report_experiment'] != None and len(st.session_state['cumulative_sum_df']) > 0:
-    #     file_name = f"{st.session_state['selected_report_experiment']}_{st.session_state['period']}.xlsx"
-    #     output = BytesIO()
-    #     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-    #         st.session_state['cumulative_sum_df'].to_excel(writer, index=False, sheet_name='Sheet1')
-    #         processed_data = output.getvalue()
-    #         writer.close()
-    #     st.download_button(
-    #         label="Download Report",
-    #         data=processed_data,
-    #         file_name=file_name,
-    #         mime="application/vnd.ms-excel",
-    #     )
+    st.text_input('Enter Excel file name (e.g. email_data.xlsx)', key='filename')
 
 with main_pane:
     st.subheader("Cohort Creation")
@@ -1278,21 +1262,23 @@ with main_pane:
 
                 st.markdown(f"<div class='selected-snapshot'>Selected Experiment for Report : {experiment_name}</div>",
                             unsafe_allow_html=True)
-                col1, _ = st.columns(2)
-                with col1:
-                    filename = st.text_input('Enter Excel file name (e.g. email_data.xlsx)')
+                filename = st.session_state['filename']
                 if filename:
                     if not filename.endswith(".xlsx"):
                         filename += ".xlsx"
-                    # st.session_state['filename'] = filename
                     buffer = BytesIO()
                     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                         client_view.to_excel(writer, index=False, sheet_name='Report')
+                        final_all_sum_df = st.session_state['final_all_sum_df'].copy()
+                        depts = final_all_sum_df['NAME'].unique()
+                        for dept in depts:
+                            dept_df = final_all_sum_df[final_all_sum_df['NAME'] == dept]
+                            dept_df.to_excel(writer, sheet_name=dept, index=False)
+                        writer.close()
                     st.download_button(label="Download Report", data=buffer.getvalue(), file_name=filename,
-                                       mime="application/vnd.ms-excel")
-
+                                       mime="application/vnd.ms-excel", key='download_report')
                 st.table(
-                    cumulative_sum_df.style.set_table_styles
+                    client_view.style.set_table_styles
                         (
                         [
                             {
@@ -1308,7 +1294,3 @@ with main_pane:
                     )
                     .format(precision=0, thousands=",")
                 )
-
-        if len(st.session_state['final_all_sum_df']) > 0:
-            st.write(st.session_state['final_all_sum_df'])
-
