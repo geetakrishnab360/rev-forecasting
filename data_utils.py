@@ -4,7 +4,6 @@ import numpy as np
 from collections import OrderedDict
 import streamlit as st
 from datetime import datetime
-from io import BytesIO
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -42,6 +41,48 @@ def prepare_actual_rev_data():
     )
     actual_df.date = pd.to_datetime(actual_df.date).dt.date
     st.session_state["actual_df"] = actual_df.copy()
+    # actuals = pd.read_excel('data/YTD 2024 Revenue.xlsx', sheet_name='Hubspot ID', skiprows=5, nrows=312)
+    # actuals = actuals.rename(columns={'Entity (Line): HubSpot Deal ID': 'Hubspot ID'})
+    # actuals = actuals.drop(columns=['Unnamed: 0'], axis=1)
+    # actuals = actuals.drop(0)
+    # actuals = actuals[actuals['Hubspot ID'] != '(blank)']
+    # actuals = actuals.fillna(0)
+    # drop_ids = ['15582551047, 16592648012',
+    #             'MLabs-Embark-GenotypingPlatform',
+    #             'MLabs-Embark-GenotypingPl',
+    #             '14251479461; 16059181240',
+    #             '14251479461; 16059181240',
+    #             '17858842259; 17858935945']
+    # actuals = actuals[~actuals['Hubspot ID'].isin(drop_ids)]
+    # existing_actual_df = actuals[['Hubspot ID', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul']]
+    # existing_actual_df.columns = [
+    #     "Hubspot ID",
+    #     "2024-01-01",
+    #     "2024-02-01",
+    #     "2024-03-01",
+    #     "2024-04-01",
+    #     "2024-05-01",
+    #     "2024-06-01",
+    #     "2024-07-01",
+    # ]
+    # existing_actual_df = (
+    #     existing_actual_df.set_index("Hubspot ID")[
+    #         [
+    #             "2024-01-01",
+    #             "2024-02-01",
+    #             "2024-03-01",
+    #             "2024-04-01",
+    #             "2024-05-01",
+    #             "2024-06-01",
+    #             "2024-07-01",
+    #         ]
+    #     ]
+    #     .stack()
+    #     .reset_index()
+    #     .rename(columns={"level_1": "date", 0: "amount"})
+    # )
+    # existing_actual_df.date = pd.to_datetime(existing_actual_df.date).dt.date
+    # st.session_state["actual_df"] = existing_actual_df.copy()
 
 
 def convert_to_cohort_df(experiemnt_df):
@@ -62,7 +103,7 @@ def convert_to_cohort_df(experiemnt_df):
     features["selected"] = experiemnt_df["selected"].iloc[1:].copy()
     features = features.reset_index(drop=True)
     features["cohort"] = pd.Series(
-        [f"cohort {i}" for i in range(0, len(experiemnt_df)-1)]
+        [f"cohort {i}" for i in range(0, len(experiemnt_df) - 1)]
     )
     # features.columns = features.iloc[0]
     # features.drop(0, inplace=True)
@@ -499,14 +540,6 @@ def aggregate_snapshot_numbers(snapshot_numbers):
         [res.reset_index() for res in snapshot_numbers.values()]
     )
     return concatenated.groupby("date")[["Forecast", "Actual", "MAPE"]].mean()
-
-# def download_report(filename,cumulative_sum_df):
-#     if filename.endswith(".xlsx") == False:  # add file extension if it is forgotten
-#         filename = filename + ".xlsx"
-#     buffer = BytesIO()
-#     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-#         cumulative_sum_df.to_excel(writer, index=False, sheet_name='Report')
-#     return buffer, filename
 
 # def experiment_preforecast(experiment_name, cohort_information, future_df_, _exp_columns):
 #     if len(cohort_information.get(experiment_name, {})) > 0:
