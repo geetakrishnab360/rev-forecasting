@@ -422,13 +422,7 @@ def map_cohort_to_ids(dict_, df, id_col):
 
 
 def calculate_cohort_error(date_string, experiment_name):
-    # print("*" * 10)
-    # print("[DEBUG] calculate_cohort_error")
-    # print(date_string, experiment_name)
-    # print("forecast_results" in st.session_state)
-
     if "forecast_results" in st.session_state:
-        # print("inside IF loop")
         current_forecasts = st.session_state["forecast_results"].get(
             experiment_name, OrderedDict()
         )
@@ -541,43 +535,88 @@ def aggregate_snapshot_numbers(snapshot_numbers):
     )
     return concatenated.groupby("date")[["Forecast", "Actual", "MAPE"]].mean()
 
-# def experiment_preforecast(experiment_name, cohort_information, future_df_, _exp_columns):
-#     if len(cohort_information.get(experiment_name, {})) > 0:
-#         cohort_df = cohort_information[experiment_name]['cohort_df'].copy()
-#         cohort_selected_features = cohort_information[experiment_name]["cohort_selected_features"]
-#         future_df_[cohort_selected_features] = future_df_[
-#             cohort_selected_features].fillna("None")
-#         future_df_ = (
-#             future_df_
-#             .merge(
-#                 cohort_df[
-#                     [*cohort_selected_features, "eff_probability"]
-#                 ],
-#                 on=cohort_selected_features,
-#                 how="left",
-#             )
-#             .rename(
-#                 columns={
-#                     "eff_probability": f"{experiment_name}_prob"
-#                 }
-#             )
-#             .copy()
-#         )
-#         temp = future_df_
-#         if cohort_df.iloc[0]["selected"] == False:
-#             ids = temp[
-#                 temp['deal_probability'] != temp['effective_probability']
-#                 ].index
-#             temp.loc[ids, f"{experiment_name}_prob"] = temp.loc[
-#                 ids, 'effective_probability']
-#         future_df_ = temp.copy()
-#
-#         _exp_columns.append(experiment_name)
-#
-#     if experiment_name == "Current":
-#         if len(st.session_state["forecast_results"].get("Current", {})) == 0:
-#             if experiment_name in _exp_columns:
-#                 _exp_columns.remove(experiment_name)
-#             continue
-#
-#     return
+
+def prepare_bu_revenue_data():
+    hist_actual_df = pd.read_excel(
+        r"data/Blend Consolidated Historical Revenue 140824.xlsx"
+    )
+    # st.session_state['hist_actual_df'] = hist_actual_df.copy()
+    return hist_actual_df
+
+
+def preprocess_bu_rev(actual_df):
+    def drop_null_rows_columns(input_df):
+        _df = input_df.copy()
+        return _df.dropna(how="all").dropna(how='all', axis=1).reset_index(drop=True)
+
+    def set_column_header(input_df, header_index=0):
+        _df = input_df.copy()
+        return _df.rename(columns=_df.iloc[header_index]).drop(header_index)
+
+    def convert_to_long_form(input_df):
+        _df = input_df.copy()
+        return _df.set_index(_df.columns[0]).iloc[:, :12].stack(level=0).reset_index()
+
+    def create_date_column(input_df):
+        _df = input_df.copy()
+        column_name = _df.columns[0]
+        _df['ds'] = (_df[column_name].astype('str') + _df['level_1']).apply(lambda x: datetime.strptime(x, '%Y%b'))
+        return _df.rename(columns={0: 'y'}).drop([column_name, 'level_1'], axis=1)
+
+    def convert_output_to_floats(input_df):
+        _df = input_df.copy()
+        _df['y'] = _df['y'].astype('float')
+        return _df
+
+    df_list = np.split(actual_df, actual_df[actual_df.isnull().all(1)].index)
+    df_list = list(filter(lambda x: x.dropna(how='all').shape[0] > 0, df_list))
+    df_list = [df_.pipe(drop_null_rows_columns) \
+                   .pipe(set_column_header) \
+                   .pipe(convert_to_long_form) \
+                   .pipe(create_date_column) \
+                   .pipe(convert_output_to_floats)
+               for df_ in df_list]
+    map_bu = {
+        0: 'BTS',
+        1: 'DSX',
+        2: 'EMEA',
+        3: 'MLABS',
+        4: 'FPAI'
+    }
+    for i, df_ in enumerate(df_list):
+        df_list[i]['bu'] = map_bu[i]
+    return pd.concat(df_list, ignore_index=True)
+
+def create_exo_df():
+    csv_url = f'https://raw.githubusercontent.com/rohankblend/Forecasting_exog_files/master/exog_variables.csv'
+    exo_df = pd.read_csv(csv_url, index_col=0, )
+    print(exo_df.DATE.head(20))
+    exo_df.DATE = pd.to_datetime(exo_df.DATE, format = '%Y-%m-%d')
+
+    for col in exo_df.columns:
+        if exo_df[col].dtype == 'object':
+            exo_df[col] = exo_df[col].str.replace(',', '').astype(np.float64)
+
+    exo_df['ds'] = exo_df.DATE.apply(lambda x: datetime(x.year, x.month, 1))
+    exo_df = exo_df.drop('DATE', axis=1).fillna(0).groupby('ds').mean().reset_index()
+    df_ = [
+        ['2024-07-01', 5500, 2400, 85, 3.1],
+        ['2024-08-01', 5550, 2420, 88, 3.0],
+        ['2024-09-01', 5600, 2440, 90, 2.9],
+        ['2024-10-01', 5625, 2460, 92, 2.8],
+        ['2024-11-01', 5650, 2480, 94, 2.8],
+        ['2024-12-01', 5675, 2500, 96, 2.8]
+    ]
+
+    # Create a DataFrame
+    df_ = pd.DataFrame(df_, columns=['month', 'S&P500', 'GOLD_PRICE', 'CRUDE_PRICE', 'CPI'])
+    print(df_)
+    df_.month = pd.to_datetime(df_.month)
+    df_[['S&P500', 'GOLD_PRICE', 'CRUDE_PRICE', 'CPI']] = df_.drop('month', axis=1).astype('float')
+
+    df_ = df_.rename(columns={'month': 'ds'})
+    df_['CPI'] *= 100
+    exo_df = pd.concat([exo_df[exo_df.ds <= '2024-06-01'], df_
+                        ], axis=0)
+    exo_df = exo_df.reset_index(drop=True)
+    return exo_df

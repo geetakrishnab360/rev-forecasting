@@ -137,7 +137,7 @@ def fetch_data_from_db(dates, later=True):
         print(e)
         pass
 
-@st.cache_data()
+@st.cache_data(show_spinner=False)
 def fetch_weightages():
     print("[INFO] fetching weightages from SNOWFLAKE")
     sql_query = f"""

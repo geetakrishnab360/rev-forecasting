@@ -18,19 +18,20 @@ from data_utils import (
     calculate_cohort_error,
     convert_to_cohort_df,
     prepare_actual_rev_data,
-    aggregate_snapshot_numbers,
+    aggregate_snapshot_numbers, prepare_bu_revenue_data, preprocess_bu_rev,
 )
 
 from db import (
     create_database,
     insert_experiment_into_db,
     fetch_all_experiments,
-    fetch_experiment,
+    fetch_experiment, delete_bu_from_db, insert_bu_into_db,
 )
 
 from components import set_header
 import numpy as np
 import warnings
+
 warnings.filterwarnings("ignore")
 
 # from db import fetch_experiment
@@ -416,7 +417,7 @@ def optimize_eff_probability(max_iter, progress_bar, progress_text):
     cohorts = selected_cohort_df_1.cohort.tolist()
     bounds = [(0, 1) for _ in range(len(initial_guess))]
 
-    def progress_callback():
+    def progress_callback(xk):
         progress = min(1.0, progress_callback.iteration / max_iter)
         progress_bar.progress(progress)
         progress_text.text(f"Optimization progress: {int(progress * 100)}%")
@@ -439,17 +440,9 @@ def optimize_eff_probability(max_iter, progress_bar, progress_text):
         st.session_state["cohort_df"].loc[
             st.session_state["cohort_df"]["cohort"].isin(selected_cohort_df_1["cohort"]), "eff_probability"
         ] = optimized_eff_probabilities
-        # st.session_state["cohort_df"].loc[
-        #     selected_cohort_df_1['cohort'], "eff_probability"] = optimized_eff_probabilities
+
         prob_map = dict(zip(selected_cohort_df_1.cohort, optimized_eff_probabilities))
         temp["final_probability"] = temp.cohort.map(prob_map).fillna(temp1["final_probability"])
-
-        # if edited_data.iloc[0]['selected']:
-        #     ids = temp[temp['deal_probability'] != temp['effective_probability']].index
-        #     temp.loc[ids, 'final_probability'] = st.session_state["cohort_df"].loc[
-        #         st.session_state["cohort_df"]['cohort'] == 'cohort 0', "eff_probability"].values[0]
-        #     temp.loc[ids, 'final_probability'] = temp.loc[ids, 'final_probability']
-        #     temp.loc[ids, 'cohort'] = 'cohort 0'
 
         st.session_state["active_df"] = temp.copy()
         st.session_state["optimization_done"] = True
@@ -552,8 +545,16 @@ if "cohort_information" not in st.session_state:
 if "selected_experiment_name" not in st.session_state:
     st.session_state["selected_experiment_name"] = "Existing Approach"
 
+if "bu_actual_dfs" not in st.session_state:
+    st.session_state["bu_actual_dfs"] = preprocess_bu_rev(prepare_bu_revenue_data())
+
 if "final_all_sum_df" not in st.session_state:
     st.session_state["final_all_sum_df"] = pd.DataFrame()
+
+if 'is_bu_inserted' not in st.session_state:
+    delete_bu_from_db('karthik')
+    insert_bu_into_db(st.session_state["bu_actual_dfs"], 'karthik')
+    st.session_state['is_bu_inserted'] = True
 
 left_pane, main_pane = st.columns((0.25, 0.75))
 

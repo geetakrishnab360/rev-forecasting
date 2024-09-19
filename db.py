@@ -1,10 +1,11 @@
 import sqlite3
 import os
 import pandas as pd
+import streamlit as st
 
 
 def insert_experiment_into_db(
-    cohort_df, selected_features, experiment_name, user
+        cohort_df, selected_features, experiment_name, user
 ):
     cohort_values = cohort_df[selected_features].apply(
         lambda row: "|".join(str(r) for r in row), axis=1
@@ -26,7 +27,7 @@ def insert_experiment_into_db(
             selected,
         )
     )
-    sql_query = f"""INSERT INTO cohorts VALUES {','.join(['(' +','.join([
+    sql_query = f"""INSERT INTO cohorts VALUES {','.join(['(' + ','.join([
         f"'{c}'" if isinstance(c, str) else str(c) for c in v]) + ')' for v in values])}"""
 
     # print(sql_query)
@@ -65,22 +66,6 @@ def create_database():
             );
             """
     )
-
-    # c.execute(
-    #     # """
-    #     #       INSERT INTO cohorts VALUES
-    #     #         ("geeta","default",1,"deal_stage",0),
-    #     #         ("geeta","default",2,"stage 2",0.1),
-    #     #         ("geeta","default",3,"stage 3",0.2),
-    #     #         ("geeta","default",4,"stage 4",0.3),
-    #     #         ("geeta","default",5,"stage 5",0.5),
-    #     #         ("geeta","default",6,"stage 6",0.75),
-    #     #         ("geeta","default",7,"stage 7",0.9)
-    #     #       """
-    #     """
-    #            INSERT INTO cohorts VALUES (gk,e1,1,0|0,0.1), gk,e1,1,0|0,0.1)
-    #     """
-    # )
     conn.commit()
     conn.close()
 
@@ -110,3 +95,70 @@ def fetch_all_experiments(user):
               """
     )
     return [exp[0] for exp in c.fetchall()]
+
+
+def create_bu_database():
+    conn = sqlite3.connect(os.environ["DB_NAME"])
+    c = conn.cursor()
+    c.execute(
+        """
+            CREATE TABLE IF NOT EXISTS bu_history(
+                user varchar(100) not null,
+                bu varchar(50) not null,
+                ds date not null,
+                y real not null
+            );
+            """
+    )
+    conn.commit()
+    conn.close()
+
+
+def insert_bu_into_db(all_bu_dfs, user):
+    conn = sqlite3.connect(os.environ["DB_NAME"])
+    c = conn.cursor()
+
+    for i, row in all_bu_dfs.iterrows():
+        sql_query = f"""
+            INSERT INTO bu_history (user, bu, ds, y)
+            VALUES ('{user}','{row['bu']}','{row['ds']}',{row['y']})
+        """
+        c.execute(sql_query)
+
+    conn.commit()
+    conn.close()
+
+def update_bu_in_db(new_df, user):
+    conn = sqlite3.connect(os.environ["DB_NAME"])
+    c = conn.cursor()
+
+    for i, row in new_df.iterrows():
+        sql_query = f"""
+            UPDATE bu_history
+            SET y = {row['y']}
+            WHERE user = '{user}' AND bu = '{row['bu']}' AND ds = '{row['ds']}'
+        """
+        c.execute(sql_query)
+
+    conn.commit()
+    conn.close()
+
+def delete_bu_from_db(user):
+    conn = sqlite3.connect(os.environ["DB_NAME"])
+    c = conn.cursor()
+    c.execute(f"DELETE FROM bu_history WHERE user = '{user}'")
+    conn.commit()
+    conn.close()
+
+@st.cache_data(show_spinner=False)
+@convert_to_df
+def fetch_all_bu_data(user):
+    conn = sqlite3.connect(os.environ["DB_NAME"])
+    c = conn.cursor()
+    c.execute(
+        f"""
+              SELECT bu,ds,y FROM bu_history
+              WHERE user = '{user}'
+              """
+    )
+    return c.fetchall(), c.description

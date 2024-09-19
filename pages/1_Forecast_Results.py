@@ -300,7 +300,7 @@ with main_pane:
                     filename += ".xlsx"
                 buffer = BytesIO()
                 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                    client_view.to_excel(writer, index=False, sheet_name='Report')
+                    client_view.to_excel(writer, index=False, sheet_name='All Service Lines')
                     final_all_sum_df = st.session_state['final_all_sum_df'].copy()
                     depts = final_all_sum_df['NAME'].unique()
                     for dept in depts:
