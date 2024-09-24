@@ -31,10 +31,16 @@ from db import (
 from components import set_header
 import numpy as np
 import warnings
+# from streamlit_navigation_bar import st_navbar as st_navbar
 
 warnings.filterwarnings("ignore")
 
 st.set_page_config(layout="wide", page_title="Forecast Results", initial_sidebar_state="collapsed")
+# page = st_navbar(['Analysis', 'Forecast Results', 'TopDown'], selected='Forecast Results')
+# if page == 'Analysis':
+#     st.switch_page("Analysis.py")
+# if page == 'TopDown':
+#     st.switch_page("pages/2_TopDown.py")
 set_header("Forecasting Simulation - Pipeline Analysis")
 with open("./styles.css") as f:
     st.markdown(

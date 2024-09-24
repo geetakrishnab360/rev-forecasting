@@ -55,7 +55,7 @@ div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:fi
     position:fixed;
     overflow-y: scroll;
     transform: translateY(-15px);
-    
+
 }
 
 div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type >div>div>div> div[data-testid='column']:nth-child(1),
@@ -94,4 +94,11 @@ div.card {
     color: #2d7dce;
     margin-bottom: 20px;
     font-size: 1.5rem;
+}
+
+.date-to-1st {
+    font-size: 0.8rem;
+    /*font-weight: bold;*/
+    color: yellow;
+    background-color: transparent !important;
 }

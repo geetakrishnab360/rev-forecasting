@@ -31,6 +31,7 @@ from db import (
 from components import set_header
 import numpy as np
 import warnings
+# from streamlit_navigation_bar import st_navbar as st_navbar
 
 warnings.filterwarnings("ignore")
 
@@ -38,6 +39,11 @@ warnings.filterwarnings("ignore")
 # from data_utils import convert_to_cohort_df
 
 st.set_page_config(layout="wide", page_title="Blend Forecasting", initial_sidebar_state="collapsed")
+# page = st_navbar(['Analysis', 'Forecast Results', 'TopDown'])
+# if page == 'Forecast Results':
+#     st.switch_page("pages/1_Forecast_Results.py")
+# if page == 'TopDown':
+#     st.switch_page("pages/2_TopDown.py")
 load_dotenv()
 prepare_actual_rev_data()
 set_header("Forecasting Simulation - Pipeline Analysis")
@@ -511,11 +517,11 @@ if "future_df" not in st.session_state:
     data = fetch_data_from_db("'2024-07-31'")
     _, st.session_state["future_df"] = preprocess(data)
 
-if "reporting-experiments" not in st.session_state:
-    st.session_state["reporting-experiments"] = [
-        "Existing Approach",
-        "Default",
-    ]
+# if "reporting-experiments" not in st.session_state:
+#     st.session_state["reporting-experiments"] = [
+#         "Existing Approach",
+#         "Default",
+#     ]
 
 if "all_experiments" not in st.session_state:
     st.session_state["all_experiments"] = fetch_all_experiments("karthik")
@@ -545,16 +551,13 @@ if "cohort_information" not in st.session_state:
 if "selected_experiment_name" not in st.session_state:
     st.session_state["selected_experiment_name"] = "Existing Approach"
 
-if "bu_actual_dfs" not in st.session_state:
-    st.session_state["bu_actual_dfs"] = preprocess_bu_rev(prepare_bu_revenue_data())
+# if "bu_actual_dfs" not in st.session_state:
+#     st.session_state["bu_actual_dfs"] = preprocess_bu_rev(prepare_bu_revenue_data())
 
-if "final_all_sum_df" not in st.session_state:
-    st.session_state["final_all_sum_df"] = pd.DataFrame()
-
-if 'is_bu_inserted' not in st.session_state:
-    delete_bu_from_db('karthik')
-    insert_bu_into_db(st.session_state["bu_actual_dfs"], 'karthik')
-    st.session_state['is_bu_inserted'] = True
+# if 'is_bu_inserted' not in st.session_state:
+#     delete_bu_from_db('karthik')
+#     insert_bu_into_db(st.session_state["bu_actual_dfs"], 'karthik')
+#     st.session_state['is_bu_inserted'] = True
 
 left_pane, main_pane = st.columns((0.25, 0.75))
 
@@ -626,6 +629,7 @@ with left_pane:
         options=["Existing Approach", "Default"]
                 + st.session_state["all_experiments"],
         key="reporting-experiments",
+        default=["Existing Approach", "Default"],
     )
 
     # st.divider()
@@ -762,6 +766,7 @@ with main_pane:
         for expriment_name in ["Current"] + list(
                 st.session_state["reporting-experiments"]
         ):
+            # st.write(st.session_state['forecast_results'].keys())
             if expriment_name not in st.session_state["forecast_results"]:
                 if expriment_name == "Current":
                     continue
@@ -915,69 +920,71 @@ with main_pane:
 
         with st.expander("Snapshot Results"):
 
-            st.markdown(
-                f"<div class='selected-snapshot'>Selected Experiment : Current",
-                unsafe_allow_html=True,
-            )
-
-            snapshot_numbers = _calculate_snapshot_monthly_number(
-                st.session_state["dates_string"],
-                "Current",
-            )
-
-            for date, res in snapshot_numbers.items():
-                res = res.T
-                ren_cols = []
-                for i, cols in enumerate(res.columns):
-                    ren_cols.append(
-                        (date + pd.DateOffset(months=i + 1)).strftime("%b")
-                    )
-                res.columns = ren_cols
-                snapshot_numbers[date] = res.T
-
-            for date, res in snapshot_numbers.items():
+            if "Current" in st.session_state["forecast_results"]:
                 st.markdown(
-                    f"<div class='date-period-text'>Snapshot : {date}</div>",
+                    f"<div class='selected-snapshot'>Selected Experiment : Current",
                     unsafe_allow_html=True,
                 )
-                st.table(
-                    res.T.style.set_table_styles(
-                        [
-                            {
-                                "selector": "thead  th",
-                                "props": "background-color: #2d7dce; text-align:center; color: white;font-size:0.9rem;border-bottom: 1px solid black !important;",
-                            },
-                            {
-                                "selector": "tbody  th",
-                                "props": "font-weight:bold;font-size:0.9rem;color:#000;",
-                            },
-                            {
-                                "selector": "tbody  tr:nth-child(2n + 3)",
-                                "props": "background-color: #aacbec;",
-                            },
-                            {
-                                "selector": "tbody  tr:nth-child(2n + 3) > td,tbody  tr:nth-child(2n + 3) > th",
-                                "props": "border-bottom: 1px solid black !important;",
-                            },
-                            {
-                                "selector": "tbody  tr > th",
-                                "props": "border-right: 1px solid black !important;",
-                            },
-                        ],
-                        overwrite=False,
-                    ).format(precision=0, thousands=",")
+
+                snapshot_numbers = _calculate_snapshot_monthly_number(
+                    st.session_state["dates_string"],
+                    "Current",
                 )
+
+                for date, res in snapshot_numbers.items():
+                    res = res.T
+                    ren_cols = []
+                    for i, cols in enumerate(res.columns):
+                        ren_cols.append(
+                            (date + pd.DateOffset(months=i + 1)).strftime("%b")
+                        )
+                    res.columns = ren_cols
+                    snapshot_numbers[date] = res.T
+
+                for date, res in snapshot_numbers.items():
+                    st.markdown(
+                        f"<div class='date-period-text'>Snapshot : {date}</div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.table(
+                        res.T.style.set_table_styles(
+                            [
+                                {
+                                    "selector": "thead  th",
+                                    "props": "background-color: #2d7dce; text-align:center; color: white;font-size:0.9rem;border-bottom: 1px solid black !important;",
+                                },
+                                {
+                                    "selector": "tbody  th",
+                                    "props": "font-weight:bold;font-size:0.9rem;color:#000;",
+                                },
+                                {
+                                    "selector": "tbody  tr:nth-child(2n + 3)",
+                                    "props": "background-color: #aacbec;",
+                                },
+                                {
+                                    "selector": "tbody  tr:nth-child(2n + 3) > td,tbody  tr:nth-child(2n + 3) > th",
+                                    "props": "border-bottom: 1px solid black !important;",
+                                },
+                                {
+                                    "selector": "tbody  tr > th",
+                                    "props": "border-right: 1px solid black !important;",
+                                },
+                            ],
+                            overwrite=False,
+                        ).format(precision=0, thousands=",")
+                    )
+            else:
+                st.write("No Snapshot Data available")
 
         # if 'active_df' in st.session_state:
         #     st.write(st.session_state['active_df'])
 
         with st.expander("Cohort Results"):
-            st.markdown(
-                "<div class='selected-snapshot'>Selected Experiment : Current</div>",
-                unsafe_allow_html=True,
-            )
-
             if "Current" in st.session_state["forecast_results"]:
+                st.markdown(
+                    "<div class='selected-snapshot'>Selected Experiment : Current</div>",
+                    unsafe_allow_html=True,
+                )
                 # st.write(st.session_state["forecast_results"]["Current"])
                 coh_res = calculate_cohort_error(
                     st.session_state["dates_string"],
@@ -1011,7 +1018,7 @@ with main_pane:
                         "Error (Current)",
                     ]
                 ]
-                if coh_res is not None:
+                if len(coh_res) > 0:
                     # st.write(coh_res)
                     st.table(
                         coh_res.set_index("Cohort")
@@ -1039,6 +1046,8 @@ with main_pane:
                     # st.write(st.session_state['cohort_df'])
                 else:
                     st.write("No Cohort Data available")
+            else:
+                st.write("No Cohort Data available")
 
         # with st.expander("Future Forecasts"):
         #     if "sl_df" not in st.session_state:

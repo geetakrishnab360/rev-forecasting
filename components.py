@@ -1,6 +1,7 @@
 import os
 import base64
 import streamlit as st
+from streamlit_navigation_bar import st_navbar
 
 
 def set_header(heading):
@@ -15,3 +16,11 @@ def set_header(heading):
             </div>""",
         unsafe_allow_html=True,
     )
+
+
+def set_navigation():
+    pages = st_navbar(
+        pages=["Analysis", "Forecast Results", "TopDown"],
+        # logo="🚀",
+    )
+    return pages

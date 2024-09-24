@@ -587,11 +587,11 @@ def preprocess_bu_rev(actual_df):
         df_list[i]['bu'] = map_bu[i]
     return pd.concat(df_list, ignore_index=True)
 
+
 def create_exo_df():
     csv_url = f'https://raw.githubusercontent.com/rohankblend/Forecasting_exog_files/master/exog_variables.csv'
     exo_df = pd.read_csv(csv_url, index_col=0, )
-    print(exo_df.DATE.head(20))
-    exo_df.DATE = pd.to_datetime(exo_df.DATE, format = '%Y-%m-%d')
+    exo_df.DATE = pd.to_datetime(exo_df.DATE, format='%Y-%m-%d')
 
     for col in exo_df.columns:
         if exo_df[col].dtype == 'object':
@@ -610,7 +610,6 @@ def create_exo_df():
 
     # Create a DataFrame
     df_ = pd.DataFrame(df_, columns=['month', 'S&P500', 'GOLD_PRICE', 'CRUDE_PRICE', 'CPI'])
-    print(df_)
     df_.month = pd.to_datetime(df_.month)
     df_[['S&P500', 'GOLD_PRICE', 'CRUDE_PRICE', 'CPI']] = df_.drop('month', axis=1).astype('float')
 
@@ -619,4 +618,16 @@ def create_exo_df():
     exo_df = pd.concat([exo_df[exo_df.ds <= '2024-06-01'], df_
                         ], axis=0)
     exo_df = exo_df.reset_index(drop=True)
+    exo_df = exo_df.fillna(0)
     return exo_df
+
+
+def update_df():
+    try:
+        updated_row = list(st.session_state['edited_bu_data']["edited_rows"].keys())[0]
+        updated_column_name = list(st.session_state['edited_bu_data']["edited_rows"][updated_row].keys())[0]
+        updated_value = st.session_state['edited_bu_data']["edited_rows"][updated_row][updated_column_name]
+        st.session_state['edit_bu'].at[updated_row, updated_column_name] = updated_value
+        del (st.session_state['edited_bu_data'])
+    except:
+        pass
