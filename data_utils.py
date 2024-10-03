@@ -631,3 +631,16 @@ def update_df():
         del (st.session_state['edited_bu_data'])
     except:
         pass
+
+def update_exo_df():
+    try:
+        updated_row = list(st.session_state['edited_exo_data']["edited_rows"].keys())[0]
+        updated_column_name = list(st.session_state['edited_exo_data']["edited_rows"][updated_row].keys())[0]
+        updated_value = st.session_state['edited_exo_data']["edited_rows"][updated_row][updated_column_name]
+        st.session_state['edit_exo'].at[updated_row, updated_column_name] = updated_value
+        del (st.session_state['edited_exo_data'])
+    except:
+        pass
+
+def record_changes(variable,key):
+    st.session_state[variable] = st.session_state[key]

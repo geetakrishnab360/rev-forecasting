@@ -20,6 +20,7 @@ from data_utils import (
     convert_to_cohort_df,
     prepare_actual_rev_data,
     aggregate_snapshot_numbers,
+    record_changes,
 )
 from db import (
     create_database,
@@ -45,28 +46,28 @@ page = option_menu(
     orientation="horizontal",
     icons=["bar-chart-line-fill", "graph-up-arrow", "graph-up-arrow"],
     styles={
-            "container":{
-                # "background-color": "black",
-                # "padding": "10px",
-                # "margin": "10px 0px",
-                # "font": "sans-serif",
-                # "position": "relative",
-                "border": "1px solid #d3d3d3",
-                "border-radius": "5px",
-                "margin": "0px 0px 0px 0px",
-                "padding": "0px",
-            },
-            "nav-link":{
-                "font-family": "Verdana, sans-serif",
-                "font-size": "0.85rem",
-                # "text-align": "left",
-                "--hover-color": "grey",
-                "--hover-background-color": "white",
-                "margin": "0px 0px",
-                "border-radius": "0px",
-            },
-            "nav-link-selected":{"background-color": "red", "color": "white"},
+        "container": {
+            # "background-color": "black",
+            # "padding": "10px",
+            # "margin": "10px 0px",
+            # "font": "sans-serif",
+            # "position": "relative",
+            "border": "1px solid #d3d3d3",
+            "border-radius": "5px",
+            "margin": "0px 0px 0px 0px",
+            "padding": "0px",
         },
+        "nav-link": {
+            "font-family": "Verdana, sans-serif",
+            "font-size": "0.85rem",
+            # "text-align": "left",
+            "--hover-color": "grey",
+            "--hover-background-color": "white",
+            "margin": "0px 0px",
+            "border-radius": "0px",
+        },
+        "nav-link-selected": {"background-color": "red", "color": "white"},
+    },
 )
 if page == 'Pipeline Analysis':
     st.switch_page("Analysis.py")
@@ -135,14 +136,15 @@ left_pane, main_pane = st.columns((0.25, 0.75))
 with left_pane:
     if 'reporting-experiments-p2' not in st.session_state:
         st.session_state['reporting-experiments-p2'] = ["Existing Approach", "Default"]
-    rep_exps_p2 = st.multiselect(
+    st.multiselect(
         "Select Experiments for Comparison",
         options=["Existing Approach", "Default"]
                 + st.session_state["all_experiments"],
-        # key="reporting-experiments-p2",
+        key="reporting-experimentss-p2",
         default=st.session_state['reporting-experiments-p2'],
+        on_change=record_changes,
+        args=("reporting-experiments-p2", "reporting-experimentss-p2"),
     )
-    st.session_state['reporting-experiments-p2'] = rep_exps_p2
 
     experiments = st.session_state["reporting-experiments-p2"]
     experiments = [e for e in experiments if e not in ["Existing Approach", "Default"]]
@@ -150,11 +152,15 @@ with left_pane:
         for experiment in experiments:
             _ = fetch_and_forecast_experiment(experiment)
 
+    if "period" not in st.session_state:
+        st.session_state["period"] = "6 Months"
     st.selectbox(
         "Select Period",
         options=["Quarter", "6 Months", "1 Year"],
-        key="period",
-        index=1
+        key="periodd",
+        index=(["Quarter", "6 Months", "1 Year"]).index(st.session_state['period']),
+        on_change=record_changes,
+        args=("period", "periodd"),
     )
     st.session_state['period_to_date'] = {"Quarter": "2024-10-01", "6 Months": "2025-01-01", "1 Year": "2025-07-01"}
 

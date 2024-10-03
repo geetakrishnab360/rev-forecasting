@@ -30,6 +30,8 @@ from data_utils import (
     preprocess_bu_rev,
     prepare_bu_revenue_data,
     update_df,
+    record_changes,
+    update_exo_df,
 )
 from db import (
     create_database,
@@ -65,28 +67,28 @@ page = option_menu(
     orientation="horizontal",
     icons=["bar-chart-line-fill", "graph-up-arrow", "graph-up-arrow"],
     styles={
-            "container":{
-                # "background-color": "black",
-                # "padding": "10px",
-                # "margin": "10px 0px",
-                # "font": "sans-serif",
-                # "position": "relative",
-                "border": "1px solid #d3d3d3",
-                "border-radius": "5px",
-                "margin": "0px 0px 0px 0px",
-                "padding": "0px",
-            },
-            "nav-link":{
-                "font-family": "Verdana, sans-serif",
-                "font-size": "0.85rem",
-                # "text-align": "left",
-                "--hover-color": "grey",
-                "--hover-background-color": "white",
-                "margin": "0px 0px",
-                "border-radius": "0px",
-            },
-            "nav-link-selected":{"background-color": "red", "color": "white"},
+        "container": {
+            # "background-color": "black",
+            # "padding": "10px",
+            # "margin": "10px 0px",
+            # "font": "sans-serif",
+            # "position": "relative",
+            "border": "1px solid #d3d3d3",
+            "border-radius": "5px",
+            "margin": "0px 0px 0px 0px",
+            "padding": "0px",
         },
+        "nav-link": {
+            "font-family": "Verdana, sans-serif",
+            "font-size": "0.85rem",
+            # "text-align": "left",
+            "--hover-color": "grey",
+            "--hover-background-color": "white",
+            "margin": "0px 0px",
+            "border-radius": "0px",
+        },
+        "nav-link-selected": {"background-color": "red", "color": "white"},
+    },
 )
 if page == 'Pipeline Analysis':
     st.switch_page("Analysis.py")
@@ -326,17 +328,25 @@ with left_pane:
                 dept_df.to_excel(writer, sheet_name=bu, index=False)
             writer.close()
         cols = st.columns((1, 1, 1))
+        if 'bu_graph_selected' not in st.session_state:
+            st.session_state['bu_graph_selected'] = "Overall"
         cols[0].selectbox('Select Business Unit',
                           options=['Overall'] + st.session_state['all_bu_dfs']['bu'].unique().tolist(),
-                          key='bu_graph_selected', index=0)
+                          key='bu_graph_selectedd',
+                          index=(['Overall'] + st.session_state['all_bu_dfs']['bu'].unique().tolist()).index(
+                              st.session_state['bu_graph_selected']),
+                          on_change=record_changes, args=('bu_graph_selected', 'bu_graph_selectedd'))
         no_of_past_years = latest_actual_date + relativedelta(months=-1) - datet.datetime.strptime(
             st.session_state['all_bu_dfs']['ds'].min(), "%Y-%m-%d %H:%M:%S").date()
         # print(no_of_past_years)
         no_of_past_years = no_of_past_years.days // 365
         # print(datet.datetime.strptime(st.session_state['all_bu_dfs']['ds'].min(), "%Y-%m-%d %H:%M:%S").date())
         # print(latest_actual_date)
-        cols[1].selectbox('Select past years of actuals', options=range(1, no_of_past_years + 1), key='past_years',
-                          index=1)
+        if 'past_years' not in st.session_state:
+            st.session_state['past_years'] = 2
+        cols[1].selectbox('Select past years of actuals', options=range(1, no_of_past_years + 1), key='past_yearss',
+                          index=(range(1, no_of_past_years + 1)).index(int(st.session_state['past_years'])),
+                          on_change=record_changes, args=('past_years', 'past_yearss'))
         st.download_button(label="Download Data", data=buffer.getvalue(), file_name=bu_filename,
                            mime="application/vnd.ms-excel", key='download_bu_data')
 
@@ -453,14 +463,19 @@ with left_pane:
         }
         cols = st.columns((0.5, 1))
         with cols[0]:
-            st.multiselect('Select variable to show', options=plot_show_df.columns, key='selected_exo_vars',
-                           default=['S&P500', 'GOLD_PRICE', 'CRUDE_PRICE', 'CPI'])
+            if 'selected_exo_vars' not in st.session_state:
+                st.session_state['selected_exo_vars'] = ['S&P500', 'GOLD_PRICE', 'CRUDE_PRICE', 'CPI']
+            st.multiselect('Select variable to show', options=plot_show_df.drop('ds', axis=1).columns,
+                           key='selected_exo_varss',
+                           on_change=record_changes, args=('selected_exo_vars', 'selected_exo_varss'),
+                           default=st.session_state['selected_exo_vars'])
             st.text("Edit Exogenous data:")
             edited_exo_data = st.data_editor(
                 st.session_state["edit_exo_df"],
                 key="edited_exo_data",
                 hide_index=True,
                 column_config=column_config,
+                on_change=update_exo_df,
             )
 
         st.button('Save Edited Exogenous Data', key='save_exo_data')
@@ -498,12 +513,25 @@ with left_pane:
 
     with st.expander('Future Forecasts', expanded=True):
         cols = st.columns((1, 1, 1))
+        if 'bu_forecast_selected' not in st.session_state:
+            st.session_state['bu_forecast_selected'] = \
+                (['Overall'] + st.session_state['all_bu_dfs']['bu'].unique().tolist())[2]
         cols[0].selectbox('Select Business Unit',
                           options=['Overall'] + st.session_state['all_bu_dfs']['bu'].unique().tolist(),
-                          key='bu_forecast_selected', index=2)
-        cols[1].selectbox('Select no of months to forecast', options=[3, 6, 9, 12], key='forecast_months', index=3)
-        cols[2].multiselect('Select models', options=['model1', 'model2'], key='selected_models',
-                            default=['model1', 'model2'])
+                          key='bu_forecast_selectedd',
+                          index=(['Overall'] + st.session_state['all_bu_dfs']['bu'].unique().tolist()).index(
+                              st.session_state['bu_forecast_selected']),
+                          on_change=record_changes, args=('bu_forecast_selected', 'bu_forecast_selectedd'))
+        if 'forecast_months' not in st.session_state:
+            st.session_state['forecast_months'] = 12
+        cols[1].selectbox('Select no of months to forecast', options=[3, 6, 9, 12], key='forecast_monthss',
+                          index=[3, 6, 9, 12].index(st.session_state['forecast_months']),
+                          on_change=record_changes, args=('forecast_months', 'forecast_monthss'))
+        if 'selected_models' not in st.session_state:
+            st.session_state['selected_models'] = ['model1', 'model2']
+        cols[2].multiselect('Select models', options=['model1', 'model2'], key='selected_modelss',
+                            default=st.session_state['selected_models'],
+                            on_change=record_changes, args=('selected_models', 'selected_modelss'))
 
         if len(list(st.session_state['selected_models'])) == 0:
             st.write('Please select atleast one model')

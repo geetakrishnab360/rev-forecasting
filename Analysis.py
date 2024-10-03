@@ -24,6 +24,7 @@ from data_utils import (
     aggregate_snapshot_numbers,
     prepare_bu_revenue_data,
     preprocess_bu_rev,
+    record_changes,
 )
 from db import (
     create_database,
@@ -51,7 +52,7 @@ page = option_menu(
     orientation="horizontal",
     icons=["bar-chart-line-fill", "graph-up-arrow", "graph-up-arrow"],
     styles={
-        "container":{
+        "container": {
             # "background-color": "black",
             # "padding": "10px",
             # "margin": "10px 0px",
@@ -62,7 +63,7 @@ page = option_menu(
             "margin": "0px 0px 0px 0px",
             "padding": "0px",
         },
-        "nav-link":{
+        "nav-link": {
             "font-family": "Verdana, sans-serif",
             "font-size": "0.85rem",
             # "text-align": "left",
@@ -71,7 +72,7 @@ page = option_menu(
             "margin": "0px 0px",
             "border-radius": "0px",
         },
-        "nav-link-selected":{"background-color": "red", "color": "white"},
+        "nav-link-selected": {"background-color": "red", "color": "white"},
     },
 )
 if page == 'Pipeline Forecast':
@@ -622,13 +623,17 @@ with left_pane:
     #     "<div class='date-period-text'>Selected Period : Jun 2024</div>",
     #     unsafe_allow_html=True,
     # )
+    if 'data_period' not in st.session_state:
+        st.session_state['data_period'] = 6
 
     st.selectbox(
         "Data Period",
         options=[1, 3, 6],
-        key="data_period",
         format_func=format_period_text,
-        index=2,
+        key='data_periodd',
+        index=([1, 3, 6]).index(st.session_state['data_period']),
+        on_change=record_changes,
+        args=('data_period', 'data_periodd'),
     )
 
     st.button("Fetch Data", on_click=pull_data)
@@ -661,20 +666,21 @@ with left_pane:
 
     if 'reporting-experiments' not in st.session_state:
         st.session_state['reporting-experiments'] = ["Existing Approach", "Default"]
-    rep_exps = st.multiselect(
+    st.multiselect(
         "Select Experiments for Comparison",
         options=["Existing Approach", "Default"]
                 + st.session_state["all_experiments"],
-        # key="reporting-experiments",
+        key="reporting-experimentss",
         default=st.session_state['reporting-experiments'],
+        on_change=record_changes,
+        args=('reporting-experiments', 'reporting-experimentss')
     )
-    st.session_state['reporting-experiments'] = rep_exps
 
 with main_pane:
     st.subheader("Cohort Creation")
     if 'cohort_selected_features' not in st.session_state:
         st.session_state['cohort_selected_features'] = []
-    cohort_selected_features = st.multiselect(
+    st.multiselect(
         "Features for cohorts",
         options=[
             "deal_stage",
@@ -683,10 +689,11 @@ with main_pane:
             "pipeline",
             "deal_type",
         ],
+        key='cohort_selected_featuress',
         default=st.session_state['cohort_selected_features'],
-        on_change=disable_calculations,
+        on_change=record_changes,
+        args=('cohort_selected_features', 'cohort_selected_featuress')
     )
-    st.session_state['cohort_selected_features'] = cohort_selected_features
 
     st.button(
         "Update cohorts",
