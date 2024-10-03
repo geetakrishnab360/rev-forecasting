@@ -28,9 +28,10 @@ from db import (
     fetch_experiment,
 )
 
-from components import set_header
+from components import set_header, set_navigation
 import numpy as np
 import warnings
+
 # from streamlit_navigation_bar import st_navbar as st_navbar
 
 warnings.filterwarnings("ignore")
@@ -41,22 +42,85 @@ st.set_page_config(layout="wide", page_title="Forecast Results", initial_sidebar
 #     st.switch_page("Analysis.py")
 # if page == 'TopDown':
 #     st.switch_page("pages/2_TopDown.py")
+# set_navigation()
 set_header("Forecasting Simulation - Pipeline Analysis")
+
+
+def fetch_and_forecast_experiment(experiment_name):
+    exp_df = convert_to_cohort_df(fetch_experiment("karthik", experiment_name))
+    exp_df['selected'] = exp_df.selected.map({1: True, 0: False})
+    cohort_selected_features = list(
+        exp_df.drop(["cohort", "eff_probability", "selected"], axis=1).columns
+    )
+
+    st.session_state["cohort_information"][experiment_name] = {}
+    st.session_state["cohort_information"][experiment_name][
+        "cohort_df"
+    ] = exp_df.copy()
+    st.session_state["cohort_information"][experiment_name][
+        "cohort_selected_features"
+    ] = cohort_selected_features.copy()
+
+    # st.write(st.session_state["cohort_df"])
+    _df = st.session_state["data_df"].copy()
+    _df[cohort_selected_features] = _df[cohort_selected_features].fillna(
+        "None"
+    )
+
+    _df = _df.merge(exp_df, on=cohort_selected_features, how="left").copy()
+
+    _df["final_probability"] = _df["eff_probability"].fillna(0)
+    temp = _df.copy()
+
+    if not exp_df.iloc[0]['selected']:
+        ids = temp[
+            temp['deal_probability'] != temp['effective_probability']
+            ].index
+        temp.loc[ids, 'final_probability'] = temp.loc[
+            ids, 'effective_probability']
+
+        temp.loc[ids, 'cohort'] = 'cohort 0'
+
+    _df = temp.copy()
+    forecast_results = calculate_forecasts(
+        _df, ["final_probability"], ["amount"], "2024-07-01"
+    )
+
+    st.session_state["forecast_results"][
+        experiment_name
+    ] = forecast_results.copy()
+    return exp_df, cohort_selected_features, _df
+
+
 with open("./styles.css") as f:
     st.markdown(
         f"<style>{f.read()}</style>",
         unsafe_allow_html=True,
     )
+if "all_experiments" not in st.session_state:
+    st.error("Please run the Analysis page first")
+    st.stop()
+
 left_pane, main_pane = st.columns((0.25, 0.75))
 
 with left_pane:
-    st.multiselect(
+    if 'reporting-experiments-p2' not in st.session_state:
+        st.session_state['reporting-experiments-p2'] = ["Existing Approach", "Default"]
+    rep_exps_p2 = st.multiselect(
         "Select Experiments for Comparison",
         options=["Existing Approach", "Default"]
                 + st.session_state["all_experiments"],
-        key="reporting-experiments",
-        default=["Existing Approach", "Default"],
+        # key="reporting-experiments-p2",
+        default=st.session_state['reporting-experiments-p2'],
     )
+    st.session_state['reporting-experiments-p2'] = rep_exps_p2
+
+    experiments = st.session_state["reporting-experiments-p2"]
+    experiments = [e for e in experiments if e not in ["Existing Approach", "Default"]]
+    if len(experiments) > 0:
+        for experiment in experiments:
+            _ = fetch_and_forecast_experiment(experiment)
+
     st.selectbox(
         "Select Period",
         options=["Quarter", "6 Months", "1 Year"],
@@ -89,7 +153,7 @@ with main_pane:
         st.session_state["future_df_"] = st.session_state["future_df"].copy()
         _exp_columns = []
 
-        for experiment_name in ["Current"] + st.session_state["reporting-experiments"]:
+        for experiment_name in ["Current"] + st.session_state["reporting-experiments-p2"]:
             cohort_info = st.session_state["cohort_information"].get(experiment_name, {})
             if cohort_info:
                 cohort_df = cohort_info["cohort_df"]
@@ -146,7 +210,7 @@ with main_pane:
 
         fig = go.Figure()
 
-        for i, experiment_name in enumerate(["Current"] + st.session_state["reporting-experiments"]):
+        for i, experiment_name in enumerate(["Current"] + st.session_state["reporting-experiments-p2"]):
             if experiment_name == "Current":
                 if len(st.session_state["forecast_results"].get("Current", {})) == 0:
                     continue
@@ -180,7 +244,7 @@ with main_pane:
                     "date": "Date",
                     **{
                         f"amount_{e}": e
-                        for e in st.session_state["reporting-experiments"]
+                        for e in st.session_state["reporting-experiments-p2"]
                     },
                 }
             )
@@ -359,7 +423,7 @@ with main_pane:
     # st.write(st.session_state["cohort_information"])
     # st.write(st.session_state["future_df_"])
     # _exp_columns = []
-    # for experiment_name in ["Current"] + st.session_state["reporting-experiments"]:
+    # for experiment_name in ["Current"] + st.session_state["reporting-experiments-p2"]:
     #     if len(st.session_state["cohort_information"].get(experiment_name, {})) > 0:
     #         st.write("Experiment Name", experiment_name)
     #         cohort_df = st.session_state["cohort_information"][experiment_name]["cohort_df"]
@@ -461,7 +525,7 @@ with main_pane:
     # fig = go.Figure()
     #
     # for i, experiment_name in enumerate(
-    #         ["Current"] + st.session_state["reporting-experiments"]
+    #         ["Current"] + st.session_state["reporting-experiments-p2"]
     # ):
     #     if experiment_name == "Current":
     #         if (
@@ -503,7 +567,7 @@ with main_pane:
     #                 "date": "Date",
     #                 **{
     #                     f"amount_{e}": e
-    #                     for e in st.session_state["reporting-experiments"]
+    #                     for e in st.session_state["reporting-experiments-p2"]
     #                 },
     #             }
     #         )
@@ -534,7 +598,7 @@ with main_pane:
     # #         #         "date": "Date",
     # #         #         **{
     # #         #             f"amount_{e}": e
-    # #         #             for e in st.session_state["reporting-experiments"]
+    # #         #             for e in st.session_state["reporting-experiments-p2"]
     # #         #         },
     # #         #     }
     # #         # )
@@ -558,3 +622,4 @@ with main_pane:
     # #         )
     # #         .format(precision=0, thousands=",")
     # #     )
+    # st.write(st.session_state)

@@ -1,6 +1,8 @@
 import streamlit as st
 import plotly.graph_objs as go
 from io import BytesIO
+
+from bokeh.themes import default
 from plotly.subplots import make_subplots
 from plotly import colors
 from dotenv import load_dotenv
@@ -28,11 +30,12 @@ from db import (
     fetch_experiment, delete_bu_from_db, insert_bu_into_db,
 )
 
-from components import set_header
+from components import set_header, set_navigation
 import numpy as np
 import warnings
 # from streamlit_navigation_bar import st_navbar as st_navbar
-
+# st.navigation(pages=[st.Page('Analysis.py'), st.Page('pages/1_Forecast_Results.py'), st.Page('pages/2_TopDown.py')],
+#               position='sidebar')
 warnings.filterwarnings("ignore")
 
 # from db import fetch_experiment
@@ -46,6 +49,7 @@ st.set_page_config(layout="wide", page_title="Blend Forecasting", initial_sideba
 #     st.switch_page("pages/2_TopDown.py")
 load_dotenv()
 prepare_actual_rev_data()
+# set_navigation()
 set_header("Forecasting Simulation - Pipeline Analysis")
 create_database()
 
@@ -624,13 +628,16 @@ with left_pane:
         index=None,
     )
 
-    st.multiselect(
+    if 'reporting-experiments' not in st.session_state:
+        st.session_state['reporting-experiments'] = ["Existing Approach", "Default"]
+    rep_exps = st.multiselect(
         "Select Experiments for Comparison",
         options=["Existing Approach", "Default"]
                 + st.session_state["all_experiments"],
-        key="reporting-experiments",
-        default=["Existing Approach", "Default"],
+        # key="reporting-experiments",
+        default=st.session_state['reporting-experiments'],
     )
+    st.session_state['reporting-experiments'] = rep_exps
 
     # st.divider()
 
@@ -653,8 +660,9 @@ with left_pane:
 
 with main_pane:
     st.subheader("Cohort Creation")
-
-    st.multiselect(
+    if 'cohort_selected_features' not in st.session_state:
+        st.session_state['cohort_selected_features'] = []
+    cohort_selected_features = st.multiselect(
         "Features for cohorts",
         options=[
             "deal_stage",
@@ -663,9 +671,10 @@ with main_pane:
             "pipeline",
             "deal_type",
         ],
-        key="cohort_selected_features",
+        default=st.session_state['cohort_selected_features'],
         on_change=disable_calculations,
     )
+    st.session_state['cohort_selected_features'] = cohort_selected_features
 
     st.button(
         "Update cohorts",

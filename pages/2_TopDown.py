@@ -41,8 +41,12 @@ from db import (
     delete_bu_from_db,
     fetch_all_bu_data,
     update_bu_in_db,
+    create_forecast_database,
+    insert_forecast_into_db,
+    fetch_all_forecast_data,
+    delete_forecast_from_db,
 )
-from components import set_header
+from components import set_header, set_navigation
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 import warnings
@@ -58,8 +62,11 @@ st.set_page_config(layout="wide", page_title="Top Down", initial_sidebar_state="
 # if page == 'Forecast Results':
 #     st.switch_page("pages/1_Forecast_Results.py")
 load_dotenv()
+# set_navigation()
 set_header("Top Down Forecasting")
 create_bu_database()
+create_forecast_database()
+delete_forecast_from_db('karthik')
 
 with open("./styles.css") as f:
     st.markdown(
@@ -171,7 +178,7 @@ with left_pane:
             on_change=update_df,
         )
         st.markdown(
-            "<h4 style='color: yellow;  font-size: 0.8rem;'>Note: Date is always set to 1st of the input month by default</h4>",
+            "<h4 style='font-size: 0.8rem;'>Note: Date is always set to 1st of the input month by default</h4>",
             unsafe_allow_html=True,
         )
 
@@ -229,7 +236,7 @@ with left_pane:
                     ]
 
                 if not existing_entry.empty:
-                    cols = st.columns([0.4,1])
+                    cols = st.columns([0.4, 1])
                     cols[0].info("Are you sure you want to update the data?")
                     st.session_state['is_update'] = not st.button('Yes')
                     break
@@ -291,7 +298,14 @@ with left_pane:
         cols[0].selectbox('Select Business Unit',
                           options=['Overall'] + st.session_state['all_bu_dfs']['bu'].unique().tolist(),
                           key='bu_graph_selected', index=0)
-        cols[1].selectbox('Select past years of actuals', options=['2', '3', '4', '5'], key='past_years', index=0)
+        no_of_past_years = latest_actual_date + relativedelta(months=-1) - datet.datetime.strptime(
+            st.session_state['all_bu_dfs']['ds'].min(), "%Y-%m-%d %H:%M:%S").date()
+        # print(no_of_past_years)
+        no_of_past_years = no_of_past_years.days // 365
+        # print(datet.datetime.strptime(st.session_state['all_bu_dfs']['ds'].min(), "%Y-%m-%d %H:%M:%S").date())
+        # print(latest_actual_date)
+        cols[1].selectbox('Select past years of actuals', options=range(1, no_of_past_years + 1), key='past_years',
+                          index=1)
         st.download_button(label="Download Data", data=buffer.getvalue(), file_name=bu_filename,
                            mime="application/vnd.ms-excel", key='download_bu_data')
 
@@ -449,15 +463,16 @@ with left_pane:
             )
 
             st.plotly_chart(fig)
+        st.button('Run Models', key='run_models')
 
     with st.expander('Future Forecasts', expanded=True):
         cols = st.columns((1, 1, 1))
         cols[0].selectbox('Select Business Unit',
-                         options=['Overall'] + st.session_state['all_bu_dfs']['bu'].unique().tolist(),
-                         key='bu_forecast_selected', index=2)
+                          options=['Overall'] + st.session_state['all_bu_dfs']['bu'].unique().tolist(),
+                          key='bu_forecast_selected', index=2)
         cols[1].selectbox('Select no of months to forecast', options=[3, 6, 9, 12], key='forecast_months', index=3)
         cols[2].multiselect('Select models', options=['model1', 'model2'], key='selected_models',
-                           default=['model1', 'model2'])
+                            default=['model1', 'model2'])
 
         if len(list(st.session_state['selected_models'])) == 0:
             st.write('Please select atleast one model')
@@ -482,7 +497,12 @@ with left_pane:
             st.session_state['models'][model]['forecasted_ds'] = st.session_state['models']['forecasted_dates'][i]
             st.session_state['models'][model]['forecasted_ds'] = st.session_state['models'][model]['forecasted_ds']
             forecast_df = pd.concat([forecast_df, st.session_state['models'][model]]).reset_index(drop=True)
-        # forecast_df = pd.read_excel('data/forecast_data.xlsx')
+            insert_forecast_into_db(st.session_state['models'][model], 'karthik', model)
+
+        fetched_data = fetch_all_forecast_data('karthik')
+        fetched_data['ds'] = pd.to_datetime(fetched_data['ds'])
+        fetched_data['forecasted_ds'] = pd.to_datetime(fetched_data['forecasted_ds'])
+        forecast_df = fetched_data.copy()
 
         forecast_df = forecast_df[(forecast_df['ds'] <= pd.to_datetime(forecast_date)) & (
                 forecast_df['ds'] > pd.to_datetime(latest_actual_date_time))]
@@ -584,7 +604,7 @@ with left_pane:
         forecast_table['ds'] = pd.to_datetime(forecast_table['ds'])
         forecast_table['ds'] = forecast_table['ds'].dt.date
         forecast_table['y'] = forecast_table['y'].astype(float)
-        forecast_table = forecast_table[['bu','ds','forecasted_ds','y','model']]
+        forecast_table = forecast_table[['bu', 'ds', 'forecasted_ds', 'y', 'model']]
         forecast_table = forecast_table.rename(
             columns={'ds': 'Date', 'y': 'Revenue', 'bu': 'BU', 'forecasted_ds': 'Forecasted Date', 'model': 'Model'})
         for i, model in enumerate(st.session_state['selected_models']):

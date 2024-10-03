@@ -2,3 +2,7 @@
 /change-actuals.ipynb
 /data/6monthssd.csv
 /data/forecast_data.xlsx
+/mlruns
+/aws-setup.py
+/runmodels.py
+/nav.css

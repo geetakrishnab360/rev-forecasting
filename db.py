@@ -128,6 +128,7 @@ def insert_bu_into_db(all_bu_dfs, user):
     conn.commit()
     conn.close()
 
+
 def update_bu_in_db(new_df, user):
     conn = sqlite3.connect(os.environ["DB_NAME"])
     c = conn.cursor()
@@ -143,6 +144,7 @@ def update_bu_in_db(new_df, user):
     conn.commit()
     conn.close()
 
+
 def delete_bu_from_db(user):
     conn = sqlite3.connect(os.environ["DB_NAME"])
     c = conn.cursor()
@@ -150,8 +152,8 @@ def delete_bu_from_db(user):
     conn.commit()
     conn.close()
 
+
 @st.cache_data(show_spinner=False)
-@convert_to_df
 def fetch_all_bu_data(user):
     conn = sqlite3.connect(os.environ["DB_NAME"])
     c = conn.cursor()
@@ -161,4 +163,65 @@ def fetch_all_bu_data(user):
               WHERE user = '{user}'
               """
     )
-    return c.fetchall(), c.description
+    df = c.fetchall()
+    df = pd.DataFrame(df, columns=[x[0] for x in c.description])
+    conn.close()
+    return df
+
+
+def create_forecast_database():
+    conn = sqlite3.connect(os.environ["DB_NAME"])
+    c = conn.cursor()
+    c.execute(
+        """
+            CREATE TABLE IF NOT EXISTS forecast_history(
+                user varchar(100) not null,
+                bu varchar(50) not null,
+                ds date not null,
+                forecasted_ds date not null,
+                y real not null,
+                model varchar(50) not null
+            );
+            """
+    )
+    conn.commit()
+    conn.close()
+
+
+def insert_forecast_into_db(all_forecast_dfs, user, model):
+    conn = sqlite3.connect(os.environ["DB_NAME"])
+    c = conn.cursor()
+
+    for i, row in all_forecast_dfs.iterrows():
+        sql_query = f"""
+            INSERT INTO forecast_history (user, bu, ds, forecasted_ds, y, model)
+            VALUES ('{user}','{row['bu']}','{row['ds']}','{row['forecasted_ds']}',{row['y']},'{model}')
+        """
+        c.execute(sql_query)
+
+    conn.commit()
+    conn.close()
+
+
+def delete_forecast_from_db(user):
+    conn = sqlite3.connect(os.environ["DB_NAME"])
+    c = conn.cursor()
+    c.execute(f"DELETE FROM forecast_history WHERE user = '{user}'")
+    conn.commit()
+    conn.close()
+
+
+@st.cache_data(show_spinner=False)
+def fetch_all_forecast_data(user):
+    conn = sqlite3.connect(os.environ["DB_NAME"])
+    c = conn.cursor()
+    c.execute(
+        f"""
+                  SELECT bu,ds,forecasted_ds,y,model FROM forecast_history
+                  WHERE user = '{user}'
+                  """
+    )
+    fetched_data = c.fetchall()
+    fetched_data = pd.DataFrame(fetched_data, columns=[x[0] for x in c.description])
+    conn.close()
+    return fetched_data
