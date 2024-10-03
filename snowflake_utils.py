@@ -28,7 +28,7 @@ def create_snowflake_connection():
 
 def convert_period_to_dates(duration):
     today = datetime.now().date()
-    end_month = today - timedelta(today.day - 1) - relativedelta(months=3)
+    end_month = today - timedelta(today.day - 1) - relativedelta(months=4)
     start_month = end_month - relativedelta(months=duration - 1)
     return start_month, end_month
 
