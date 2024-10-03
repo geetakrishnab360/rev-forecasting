@@ -17,6 +17,7 @@ from snowflake_utils import (
     fetch_weightages,
 )
 import pandas as pd
+import numpy as np
 from data_utils import (
     preprocess,
     calculate_forecasts,
@@ -30,7 +31,6 @@ from data_utils import (
     prepare_bu_revenue_data,
     update_df,
 )
-
 from db import (
     create_database,
     insert_experiment_into_db,
@@ -46,24 +46,31 @@ from db import (
     fetch_all_forecast_data,
     delete_forecast_from_db,
 )
-from components import set_header, set_navigation
-import numpy as np
+from components import (
+    set_header,
+    hide_sidebar,
+)
 from sklearn.preprocessing import MinMaxScaler
+from streamlit_option_menu import option_menu
 import warnings
-# from streamlit_navigation_bar import st_navbar as st_navbar
 
 warnings.filterwarnings("ignore")
 
-
 st.set_page_config(layout="wide", page_title="Top Down", initial_sidebar_state="collapsed")
-# page = st_navbar(['Analysis', 'Forecast Results', 'TopDown'], selected='TopDown')
-# if page == 'Analysis':
-#     st.switch_page("Analysis.py")
-# if page == 'Forecast Results':
-#     st.switch_page("pages/1_Forecast_Results.py")
-load_dotenv()
-# set_navigation()
+hide_sidebar()
+page = option_menu(
+    menu_title=None,
+    options=["Pipeline Analysis", "Pipeline Forecast", "TopDown Forecast"],
+    default_index=2,
+    orientation="horizontal",
+)
+if page == 'Pipeline Analysis':
+    st.switch_page("Analysis.py")
+if page == 'Pipeline Forecast':
+    st.switch_page("pages/1_Forecast_Results.py")
 set_header("Top Down Forecasting")
+
+load_dotenv()
 create_bu_database()
 create_forecast_database()
 delete_forecast_from_db('karthik')

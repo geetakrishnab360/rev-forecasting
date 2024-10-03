@@ -11,6 +11,7 @@ from snowflake_utils import (
     fetch_data_from_db, fetch_weightages,
 )
 import pandas as pd
+import numpy as np
 from data_utils import (
     preprocess,
     calculate_forecasts,
@@ -20,29 +21,33 @@ from data_utils import (
     prepare_actual_rev_data,
     aggregate_snapshot_numbers,
 )
-
 from db import (
     create_database,
     insert_experiment_into_db,
     fetch_all_experiments,
     fetch_experiment,
 )
-
-from components import set_header, set_navigation
-import numpy as np
+from components import (
+    set_header,
+    hide_sidebar,
+)
+from streamlit_option_menu import option_menu
 import warnings
-
-# from streamlit_navigation_bar import st_navbar as st_navbar
 
 warnings.filterwarnings("ignore")
 
 st.set_page_config(layout="wide", page_title="Forecast Results", initial_sidebar_state="collapsed")
-# page = st_navbar(['Analysis', 'Forecast Results', 'TopDown'], selected='Forecast Results')
-# if page == 'Analysis':
-#     st.switch_page("Analysis.py")
-# if page == 'TopDown':
-#     st.switch_page("pages/2_TopDown.py")
-# set_navigation()
+hide_sidebar()
+page = option_menu(
+    menu_title=None,
+    options=["Pipeline Analysis", "Pipeline Forecast", "TopDown Forecast"],
+    default_index=1,
+    orientation="horizontal",
+)
+if page == 'Pipeline Analysis':
+    st.switch_page("Analysis.py")
+if page == 'TopDown Forecast':
+    st.switch_page("pages/2_TopDown.py")
 set_header("Forecasting Simulation - Pipeline Analysis")
 
 

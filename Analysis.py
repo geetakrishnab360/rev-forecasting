@@ -1,7 +1,6 @@
 import streamlit as st
 import plotly.graph_objs as go
 from io import BytesIO
-
 from bokeh.themes import default
 from plotly.subplots import make_subplots
 from plotly import colors
@@ -10,9 +9,11 @@ from scipy.optimize import minimize
 from snowflake_utils import (
     convert_period_to_dates,
     convert_dates_to_string,
-    fetch_data_from_db, fetch_weightages,
+    fetch_data_from_db,
+    fetch_weightages,
 )
 import pandas as pd
+import numpy as np
 from data_utils import (
     preprocess,
     calculate_forecasts,
@@ -20,37 +21,43 @@ from data_utils import (
     calculate_cohort_error,
     convert_to_cohort_df,
     prepare_actual_rev_data,
-    aggregate_snapshot_numbers, prepare_bu_revenue_data, preprocess_bu_rev,
+    aggregate_snapshot_numbers,
+    prepare_bu_revenue_data,
+    preprocess_bu_rev,
 )
-
 from db import (
     create_database,
     insert_experiment_into_db,
     fetch_all_experiments,
-    fetch_experiment, delete_bu_from_db, insert_bu_into_db,
+    fetch_experiment,
+    delete_bu_from_db,
+    insert_bu_into_db,
 )
-
-from components import set_header, set_navigation
-import numpy as np
+from components import (
+    set_header,
+    hide_sidebar,
+)
+from streamlit_option_menu import option_menu
 import warnings
-# from streamlit_navigation_bar import st_navbar as st_navbar
-# st.navigation(pages=[st.Page('Analysis.py'), st.Page('pages/1_Forecast_Results.py'), st.Page('pages/2_TopDown.py')],
-#               position='sidebar')
+
 warnings.filterwarnings("ignore")
 
-# from db import fetch_experiment
-# from data_utils import convert_to_cohort_df
-
 st.set_page_config(layout="wide", page_title="Blend Forecasting", initial_sidebar_state="collapsed")
-# page = st_navbar(['Analysis', 'Forecast Results', 'TopDown'])
-# if page == 'Forecast Results':
-#     st.switch_page("pages/1_Forecast_Results.py")
-# if page == 'TopDown':
-#     st.switch_page("pages/2_TopDown.py")
+hide_sidebar()
+page = option_menu(
+    menu_title=None,
+    options=["Pipeline Analysis", "Pipeline Forecast", "TopDown Forecast"],
+    default_index=0,
+    orientation="horizontal",
+)
+if page == 'Pipeline Forecast':
+    st.switch_page("pages/1_Forecast_Results.py")
+if page == 'TopDown Forecast':
+    st.switch_page("pages/2_TopDown.py")
+set_header("Forecasting Simulation - Pipeline Analysis")
+
 load_dotenv()
 prepare_actual_rev_data()
-# set_navigation()
-set_header("Forecasting Simulation - Pipeline Analysis")
 create_database()
 
 

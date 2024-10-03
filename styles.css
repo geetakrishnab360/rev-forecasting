@@ -1,9 +1,9 @@
-*{
+* {
     padding: 0;
     margin: 0;
 }
 
-div.stApp{
+div.stApp {
     margin-left: 20px;
 }
 
@@ -13,10 +13,10 @@ div.stApp{
     justify-content: space-between;
     align-items: center;
     margin-top: 0;
-    margin: 0 20px;    
+    margin: 0 20px;
 }
 
-.main-header  h1 {
+.main-header h1 {
     font-size: 2rem;
 }
 
@@ -41,34 +41,34 @@ div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:fi
     /* background-color: aqua; */
 }
 
-div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type >div>div>div {
+div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type > div > div > div {
     flex-wrap: nowrap;
 }
 
-div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type >div>div>div> div[data-testid='column']:nth-child(1),
-div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type >div>div>div> div[data-testid='column']:nth-child(3){
+div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type > div > div > div > div[data-testid='column']:nth-child(1),
+div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type > div > div > div > div[data-testid='column']:nth-child(3) {
     border: 1px black solid;
     border-radius: 10px;
     margin: 0 10px;
-    box-shadow: 2px 4px 4px 4px rgba(0,0,0,0.1);
+    box-shadow: 2px 4px 4px 4px rgba(0, 0, 0, 0.1);
     max-height: 95vh;
-    position:fixed;
+    position: fixed;
     overflow-y: scroll;
     transform: translateY(-15px);
 
 }
 
-div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type >div>div>div> div[data-testid='column']:nth-child(1),
-div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type >div>div>div> div[data-testid='column']:nth-child(2),
-div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type >div>div>div> div[data-testid='column']:nth-child(3) {
+div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type > div > div > div > div[data-testid='column']:nth-child(1),
+div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type > div > div > div > div[data-testid='column']:nth-child(2),
+div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type > div > div > div > div[data-testid='column']:nth-child(3) {
     min-height: 80vh;
     padding: 30px;
 }
 
-div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type >div>div>div> div[data-testid='column']:nth-child(2) {
+div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type > div > div > div > div[data-testid='column']:nth-child(2) {
     max-width: 60%;
     position: absolute;
-    left : 30%;
+    left: 30%;
 }
 
 
@@ -81,8 +81,8 @@ div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:fi
 }
 
 
-div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type >div>div>div> div[data-testid='column']:nth-child(3){
-    right:0;
+div.stAppViewBlockContainer > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type > div > div > div > div[data-testid='column']:nth-child(3) {
+    right: 0;
 }
 
 div.card {
