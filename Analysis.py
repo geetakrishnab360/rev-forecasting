@@ -49,6 +49,30 @@ page = option_menu(
     options=["Pipeline Analysis", "Pipeline Forecast", "TopDown Forecast"],
     default_index=0,
     orientation="horizontal",
+    icons=["bar-chart-line-fill", "graph-up-arrow", "graph-up-arrow"],
+    styles={
+        "container":{
+            # "background-color": "black",
+            # "padding": "10px",
+            # "margin": "10px 0px",
+            # "font": "sans-serif",
+            # "position": "relative",
+            "border": "1px solid #d3d3d3",
+            "border-radius": "5px",
+            "margin": "0px 0px 0px 0px",
+            "padding": "0px",
+        },
+        "nav-link":{
+            "font-family": "Verdana, sans-serif",
+            "font-size": "0.85rem",
+            # "text-align": "left",
+            "--hover-color": "grey",
+            "--hover-background-color": "white",
+            "margin": "0px 0px",
+            "border-radius": "0px",
+        },
+        "nav-link-selected":{"background-color": "red", "color": "white"},
+    },
 )
 if page == 'Pipeline Forecast':
     st.switch_page("pages/1_Forecast_Results.py")
@@ -645,25 +669,6 @@ with left_pane:
         default=st.session_state['reporting-experiments'],
     )
     st.session_state['reporting-experiments'] = rep_exps
-
-    # st.divider()
-
-    # st.selectbox(
-    #     "Select Period",
-    #     options=["Quarter", "6 Months", "1 Year"],
-    #     key="period",
-    #     index=1
-    # )
-    # st.session_state['period_to_date'] = {"Quarter": "2024-10-01", "6 Months": "2025-01-01", "1 Year": "2025-07-01"}
-    #
-    # st.selectbox(
-    #     "Select Experiment for report",
-    #     options=['Current', 'Existing Approach', 'Default'] + st.session_state["all_experiments"],
-    #     key='selected_report_experiment',
-    #     index=None,
-    # )
-    #
-    # st.text_input('Enter Excel file name (e.g. email_data.xlsx)', key='filename')
 
 with main_pane:
     st.subheader("Cohort Creation")

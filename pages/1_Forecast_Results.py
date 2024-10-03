@@ -43,6 +43,30 @@ page = option_menu(
     options=["Pipeline Analysis", "Pipeline Forecast", "TopDown Forecast"],
     default_index=1,
     orientation="horizontal",
+    icons=["bar-chart-line-fill", "graph-up-arrow", "graph-up-arrow"],
+    styles={
+            "container":{
+                # "background-color": "black",
+                # "padding": "10px",
+                # "margin": "10px 0px",
+                # "font": "sans-serif",
+                # "position": "relative",
+                "border": "1px solid #d3d3d3",
+                "border-radius": "5px",
+                "margin": "0px 0px 0px 0px",
+                "padding": "0px",
+            },
+            "nav-link":{
+                "font-family": "Verdana, sans-serif",
+                "font-size": "0.85rem",
+                # "text-align": "left",
+                "--hover-color": "grey",
+                "--hover-background-color": "white",
+                "margin": "0px 0px",
+                "border-radius": "0px",
+            },
+            "nav-link-selected":{"background-color": "red", "color": "white"},
+        },
 )
 if page == 'Pipeline Analysis':
     st.switch_page("Analysis.py")
