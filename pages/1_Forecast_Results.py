@@ -164,11 +164,17 @@ with left_pane:
     )
     st.session_state['period_to_date'] = {"Quarter": "2024-10-01", "6 Months": "2025-01-01", "1 Year": "2025-07-01"}
 
+    if 'selected_report_experiment' not in st.session_state:
+        st.session_state['selected_report_experiment'] = None
     st.selectbox(
         "Select Experiment for report",
         options=['Current', 'Existing Approach', 'Default'] + st.session_state["all_experiments"],
-        key='selected_report_experiment',
-        index=None,
+        key='selected_report_experimentt',
+        index=(['Current', 'Existing Approach', 'Default'] + st.session_state["all_experiments"]).index(
+            st.session_state['selected_report_experiment']) if st.session_state['selected_report_experiment'] in [
+            'Current', 'Existing Approach', 'Default'] + st.session_state["all_experiments"] else None,
+        on_change=record_changes,
+        args=("selected_report_experiment", "selected_report_experimentt"),
     )
 
     st.text_input('Enter Excel file name (e.g. email_data.xlsx)', key='filename')

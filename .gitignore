@@ -5,3 +5,5 @@
 /mlruns
 /aws-setup.py
 /runmodels.py
+/lambda-func.py
+/runmodels-aws.py

@@ -656,13 +656,18 @@ with left_pane:
 
     st.divider()
 
-    st.selectbox(
+    if "selected-experiment" not in st.session_state:
+        st.session_state["selected-experiment"] = None
+    exp = st.selectbox(
         "Load Experiment",
         options=st.session_state["all_experiments"],
-        key="selected-experiment",
-        on_change=change_experiment,
-        index=None,
+        index=st.session_state["all_experiments"].index(
+            st.session_state["selected-experiment"]
+        ) if st.session_state["selected-experiment"] in st.session_state["all_experiments"] else None,
     )
+    if exp in st.session_state["all_experiments"]:
+        st.session_state["selected-experiment"] = exp
+        change_experiment()
 
     if 'reporting-experiments' not in st.session_state:
         st.session_state['reporting-experiments'] = ["Existing Approach", "Default"]
