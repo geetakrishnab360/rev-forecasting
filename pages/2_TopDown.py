@@ -1,8 +1,6 @@
 import streamlit as st
 import plotly.graph_objs as go
 from io import BytesIO
-from holoviews.plotting.bokeh.styles import font_size
-from jupyterlab.semver import valid_range
 from plotly.subplots import make_subplots
 from plotly import colors
 from dotenv import load_dotenv
@@ -379,7 +377,7 @@ with left_pane:
                 )
             )
         fig.update_layout(
-            title=f'{st.session_state['bu_graph_selected']} Business Units Graph',
+            title=f"{st.session_state['bu_graph_selected']} Business Units Graph",
             xaxis_title='Date',
             yaxis_title='Value',
             legend_title='Business Units'
@@ -626,7 +624,7 @@ with left_pane:
                     )
                 )
         fig.update_layout(
-            title=f'{st.session_state['bu_forecast_selected']} Business Units Forecast Graph',
+            title=f"{st.session_state['bu_forecast_selected']} Business Units Forecast Graph",
             xaxis_title='Date',
             yaxis_title='Value',
             legend_title='Business Units'

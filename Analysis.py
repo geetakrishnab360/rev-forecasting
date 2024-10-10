@@ -1,11 +1,10 @@
 import streamlit as st
 import plotly.graph_objs as go
 from io import BytesIO
-from bokeh.themes import default
 from plotly.subplots import make_subplots
 from plotly import colors
 from dotenv import load_dotenv
-from scipy.optimize import minimize, differential_evolution
+from scipy.optimize import minimize
 from snowflake_utils import (
     convert_period_to_dates,
     convert_dates_to_string,
@@ -174,7 +173,8 @@ def pull_data():
 
         start_date = get_end_of_month(st.session_state.get('start_year_input', 2024),
                                       st.session_state.get('start_month_input', 'Jan'))
-        end_date = get_end_of_month(st.session_state.get('end_year_input', 2024), st.session_state.get('end_month_input', 'Jun'))
+        end_date = get_end_of_month(st.session_state.get('end_year_input', 2024),
+                                    st.session_state.get('end_month_input', 'Jun'))
         st.session_state["dates_string"] = ",".join(
             [
                 f"""'{date.strftime("%Y-%m-%d")}'"""
@@ -196,6 +196,13 @@ def pull_data():
 
 
 def cohort_generate_forecast(experiment_name="Current"):
+    selected_cohort_df_1 = st.session_state["cohort_df"][
+        (st.session_state["cohort_df"]["selected"] == True) & (
+            (st.session_state["cohort_df"]["cohort"] != 'cohort 0')
+        )
+        ].copy()
+    initial_values = selected_cohort_df_1["eff_probability"].values
+    st.session_state["initial_probabilities"] = initial_values.copy()
     # st.write(st.session_state["cohort_df"])
     st.session_state["cohort_information"]["Current"] = {}
     # st.session_state["cohort_information"]["Current"]["cohort_df"] = (
@@ -392,6 +399,8 @@ def cohorts_update(selected_features):
     # st.session_state["cohort_information"]["Current"][
     #     "cohort_selected_features"
     # ] = selected_features.copy()
+    if len(st.session_state['cohort_df']) > 0 and "selected" not in st.session_state["cohort_df"]:
+        st.session_state["cohort_df"]["selected"] = True
     enable_save_experiment()
 
 
@@ -405,7 +414,7 @@ def calculate_current_vs_act_error(eff_probabilities, temp, cohorts, actuals):
     selected_cohort_df["eff_probability"] = eff_probabilities
     prob_map = dict(zip(cohorts, eff_probabilities))
     temp["final_probability"] = temp.cohort.map(prob_map).fillna(0.0)
-    res = 0
+    res = []
     temp_actuals = actuals.reset_index()
     temp_actuals['snapshot_date'] = pd.to_datetime(temp_actuals.snapshot_date)
     for d in temp.snapshot_month.unique():
@@ -413,13 +422,22 @@ def calculate_current_vs_act_error(eff_probabilities, temp, cohorts, actuals):
         forecast_results_sw = calculate_forecasts(temp1, ["final_probability"], ["amount"], "2024-07-01")
         actuals_total = st.session_state["actual_df"][
             (st.session_state["actual_df"].hubspot_id.isin(forecast_results_sw[d].record_id)) & (
-                    st.session_state["actual_df"].date >= d)].amount.sum()
-        forecasts = forecast_results_sw[d].amount.sum()
-        res += (forecasts - actuals_total.sum()) ** 2
+                    st.session_state["actual_df"].date >= d)].copy()
+        actuals_ = actuals_total.groupby(['hubspot_id']).amount.sum().reset_index().copy()
+        avg_forecasts = forecast_results_sw[d].groupby(['record_id']).amount.sum().reset_index()
+        merged = avg_forecasts.merge(actuals_, left_on=['record_id'], right_on=['hubspot_id'], how='left')
+        merged.amount_y = merged.amount_y.fillna(0.)
+        merged['diff'] = merged['amount_x'] - merged['amount_y']
+        diff = merged[['record_id', 'diff']].copy()
+        actual_cohort = \
+            temp1[['cohort', 'record_id']].drop_duplicates().merge(diff, left_on='record_id',
+                                                                   right_on='record_id').groupby(
+                'cohort')['diff'].sum()
+        res.append(np.power(actual_cohort.values, 2).mean())
 
     forecast_results = calculate_forecasts(temp, ["final_probability"], ["amount"], "2024-07-01")
     st.session_state["forecast_results"]["Current"] = forecast_results.copy()
-    return res / 1e12
+    return np.mean(res) / 1e12
     # # return np.mean(abs(1 - total_forecasts / actuals))
 
 
@@ -474,13 +492,12 @@ def optimize_eff_probability(max_iter, progress_bar, progress_text):
             (st.session_state["cohort_df"]["cohort"] != 'cohort 0')
         )
         ].copy()
-    # initial_guess = selected_cohort_df_1["eff_probability"].values
-    initial_guess = np.zeros_like(selected_cohort_df_1["eff_probability"].values)
-    st.session_state["initial_probabilities"] = initial_guess.copy()
+    # initial_guess = st.session_state['initial_probabilities'].copy()
+    initial_guess = np.ones_like(selected_cohort_df_1["eff_probability"].values) * 0.5
     cohorts = selected_cohort_df_1.cohort.tolist()
     bounds = [(0, 1) for _ in range(len(initial_guess))]
 
-    def progress_callback(xk, b):
+    def progress_callback(xk):
         progress = min(1.0, progress_callback.iteration / max_iter)
         progress_bar.progress(progress)
         progress_text.text(f"Optimization progress: {int(progress * 100)}%")
@@ -488,32 +505,18 @@ def optimize_eff_probability(max_iter, progress_bar, progress_text):
 
     progress_callback.iteration = 0
 
-    # constraints = {'type': 'ineq', 'fun': lambda x: x[0] <= x[1] <= x[2] <= x[3]}
-    constraints = {
-        'type': 'ineq',
-        'fun': lambda x: [x[1] - x[0],  # x[1] >= x[0]
-                          x[4] - x[3],  # x[2] >= x[1]
-                          # x[3] - x[2]
-                          ]  # x[3] >= x[2]
-    }
-
     result = minimize(
         calculate_current_vs_act_error,
         initial_guess,
         bounds=bounds,
-        method="SLSQP",
+        method="L-BFGS-B",
         options={"maxiter": max_iter,
-                 # "ftol": 1e-6  ,
-                 "disp": True},
+                 "ftol": 1e-6,
+                 "disp": False},
         callback=progress_callback,
         args=(temp, cohorts, _actuals),
-        # constraints=constraints
     )
 
-    # result = differential_evolution(calculate_current_vs_act_error, x0=initial_guess, bounds=bounds,
-    #                                 args=(temp, cohorts, _actuals), callback=progress_callback,
-    #                                 atol=1e-2, tol=1e-2, maxiter=max_iter, disp=True)
-    print(result)
     if result.success:
         optimized_eff_probabilities = result.x
         st.session_state["cohort_df"].loc[
@@ -560,6 +563,7 @@ def reset_probabilities():
         ] = st.session_state["initial_probabilities"]
         st.session_state["disable_calculations"] = False
         st.session_state["update_probabilities_clicked"] = False
+        # st.session_state["optimization_done"] = False
 
 
 with open("./styles.css") as f:
@@ -582,9 +586,16 @@ if 'weights_df' not in st.session_state:
 if "optimization_done" not in st.session_state:
     st.session_state["optimization_done"] = False
 
-if "selected" not in st.session_state["cohort_df"]:
-    # st.write("In IF loop")
-    st.session_state["cohort_df"]["selected"] = True
+# if "selected" not in st.session_state["cohort_df"]:
+#     # st.write("In IF loop")
+#     st.session_state["cohort_df"]["selected"] = True
+#     selected_cohort_df_1 = st.session_state["cohort_df"][
+#         (st.session_state["cohort_df"]["selected"] == True) & (
+#             (st.session_state["cohort_df"]["cohort"] != 'cohort 0')
+#         )
+#         ].copy()
+#     initial_values = selected_cohort_df_1["eff_probability"].values
+#     st.session_state["initial_probabilities"] = initial_values.copy()
 
 if "future_df" not in st.session_state:
     data = fetch_data_from_db("'2024-07-31'")
@@ -756,17 +767,19 @@ with left_pane:
     st.divider()
 
     if "selected-experiment" not in st.session_state:
-        st.session_state["selected-experiment"] = None
+        st.session_state["selected-experiment"] = st.session_state.get("selected-experiment-safe")
     exp = st.selectbox(
         "Load Experiment",
         options=st.session_state["all_experiments"],
-        index=st.session_state["all_experiments"].index(
-            st.session_state["selected-experiment"]
-        ) if st.session_state["selected-experiment"] in st.session_state["all_experiments"] else None,
+        # index=None if st.session_state.get('selected-experiment') is None else st.session_state["all_experiments"].index(
+        #     st.session_state["selected-experiment"]
+        # ) if st.session_state["selected-experiment"] in st.session_state["all_experiments"] else None,
+        on_change=change_experiment,
+        key='selected-experiment'
     )
     if exp in st.session_state["all_experiments"]:
-        st.session_state["selected-experiment"] = exp
-        change_experiment()
+        st.session_state["selected-experiment-safe"] = exp
+        # change_experiment()
 
     if 'reporting-experiments' not in st.session_state:
         st.session_state['reporting-experiments'] = ["Existing Approach", "Default"]
@@ -857,14 +870,17 @@ with main_pane:
         #     # st.write(st.session_state['active_df'][
         #     #              st.session_state['active_df']['deal_probability'] != st.session_state['active_df'][
         #     #                  'final_probability']])
-
+        if 'max_iter' not in st.session_state:
+            st.session_state['max_iter'] = 20
         max_iter = st.number_input(
             "Max Iterations",
             min_value=1,
-            value=20,
+            value=st.session_state['max_iter'],
             step=1,
-            key="max_iter",
+            key="max_iterr",
             label_visibility="collapsed",
+            on_change=record_changes,
+            args=('max_iter', 'max_iterr')
         )
         if st.button(
                 "Optimize Probabilities",
@@ -887,7 +903,7 @@ with main_pane:
             "Reset Probabilities",
             on_click=reset_probabilities,
             type="secondary",
-            disabled=not st.session_state.get("optimization_done", False),  # Enable only after optimization
+            disabled=not st.session_state.get("update_probabilities_clicked", False),  # Enable only after optimization
         )
 
     st.divider()
