@@ -199,8 +199,7 @@ def cohort_generate_forecast(experiment_name="Current"):
     # st.write(st.session_state["cohort_df"])
     st.session_state["cohort_information"]["Current"] = {}
     # st.session_state["cohort_information"]["Current"]["cohort_df"] = (
-    #     st.session_state["cohort_df"].copy()
-    # )
+    #     st.session_state["cohort_df"].copy() )
     st.session_state["cohort_df"] = edited_data.copy()
     st.session_state["cohort_information"]["Current"]["cohort_df"] = (
         st.session_state["cohort_df"].copy()
