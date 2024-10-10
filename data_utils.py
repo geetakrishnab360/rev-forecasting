@@ -229,6 +229,23 @@ def preprocess(
         df = df[df.record_id != "17757257376"]
         return df
 
+    def create_dsx_renewals_column_(df):
+        renewals = df[
+            (df.pipeline.str.contains('Renewals', case=False)) | (
+                    (df.deal_type.str.contains('Renewal', case=False)) &
+                    (df.pipeline.str.contains('DSX', case=False))
+            )
+            ]
+        df['dsx_renewals'] = df['deal_type']
+        df.loc[renewals.index, 'dsx_renewals'] = 'Renewals'
+        return df
+
+    def create_dsx_renewals_column(df):
+        df.loc[df.pipeline.str.contains('Renewals', case=False),'deal_type_new'] = df.loc[df.pipeline.str.contains('Renewals', case=False),'deal_type'].apply(lambda x: 'Renewals-' + x if x else "NULL")
+        df.loc[df.pipeline.str.contains('DSX', case=False), 'deal_type_new'] = df.loc[
+            df.pipeline.str.contains('DSX', case=False), 'deal_type'].apply(lambda x: 'DSX-' + x if x else "NULL")
+        return df
+
     preprocess_functions = [
         convert_columns_to_lower,
         convert_to_dates,
@@ -242,19 +259,26 @@ def preprocess(
         add_snapshot_month,
         create_final_probability,
         drop_visa,
+        drop_na_start_dates,
+        remove_non_dsx,
+        drop_zero_contract_value_deals,
+        create_dsx_renewals_column,
     ]
 
     _df = reduce(lambda _df, f: _df.pipe(f), preprocess_functions, dataframe)
     hubspot_ids = _df.groupby("snapshot_month").record_id.unique().to_dict()
-    return hubspot_ids, reduce(
-        lambda _df, f: _df.pipe(f),
-        [
-            drop_na_start_dates,
-            remove_non_dsx,
-            drop_zero_contract_value_deals,
-        ],
-        _df,
-    )
+    _df = _df.reset_index(drop=True)
+    return hubspot_ids, _df
+    # return hubspot_ids, reduce(
+    #     lambda _df, f: _df.pipe(f),
+    #     [
+    #         drop_na_start_dates,
+    #         remove_non_dsx,
+    #         drop_zero_contract_value_deals,
+    #         create_dsx_renewals_column
+    #     ],
+    #     _df,
+    # )
 
 
 def _calculate_forecasts(
@@ -433,6 +457,36 @@ def calculate_cohort_error(date_string, experiment_name):
             "Default", OrderedDict()
         )
         _results = []
+        # st.session_state["cohort_information"][experiment_name][
+        #     "cohort_df"
+        # ] = exp_df.copy()
+        # st.session_state["cohort_information"][experiment_name][
+        #     "cohort_selected_features"
+        # ] = cohort_selected_features.copy()
+        cohort_df = st.session_state["cohort_information"][experiment_name]["cohort_df"]
+        cohort_selected_features = st.session_state["cohort_information"][
+            experiment_name]["cohort_selected_features"]
+        _df = st.session_state["data_df"].copy()
+        _df[cohort_selected_features] = _df[cohort_selected_features].fillna(
+            "None"
+        )
+
+        _df = _df.merge(cohort_df, on=cohort_selected_features, how="left").copy()
+
+        _df["final_probability"] = _df["eff_probability"].fillna(0)
+        temp = _df.copy()
+
+        if not cohort_df.iloc[0]['selected']:
+            ids = temp[
+                temp['deal_probability'] != temp['effective_probability']
+                ].index
+            temp.loc[ids, 'final_probability'] = temp.loc[
+                ids, 'effective_probability']
+
+            temp.loc[ids, 'cohort'] = 'cohort 0'
+
+        _df = temp.copy()
+        st.session_state["active_df"] = _df.copy()
         for d in current_forecasts.keys():
             # st.write(d)
             # st.write(current_forecasts[d])
@@ -462,6 +516,14 @@ def calculate_cohort_error(date_string, experiment_name):
             )
             # st.write("Forecasts Data after merging:", forecasts_data)
             # st.write(forecasts_data)
+            # print(len(forecasts_data.record_id))
+            # print(len(st.session_state["hubspot_id_dict"][d]))
+            # temp_data_df = st.session_state['data_df'][st.session_state['data_df'].snapshot_date.dt.date == d]
+            # print(len(cohort_wise.record_id))
+            # diff_ids = set(st.session_state["hubspot_id_dict"][d]) - set(forecasts_data.record_id)
+            # print(diff_ids)
+            # print(temp_data_df[temp_data_df['record_id'].isin(diff_ids)][['expected_project_duration_in_months','expected_project_start_date','work_ahead','total_contract_value','final_probability']])
+            # temp_df = st.session_state['data_df'][st.session_state['data_df'].snapshot_date.dt.date == d].copy()
             _act = (
                 st.session_state["actual_df"][
                     st.session_state["actual_df"].hubspot_id.isin(

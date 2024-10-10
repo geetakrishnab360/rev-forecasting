@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
+import calendar
 import pandas as pd
 import snowflake.connector as connector
 import os
@@ -42,6 +43,12 @@ def convert_dates_to_string(start_date, end_date):
         ]
     )
 
+def get_end_of_month(year, month):
+    month_number = datetime.strptime(month, '%b').month
+    last_day = calendar.monthrange(year, month_number)[1]
+    last_date = datetime(year, month_number, last_day).date()
+    print(f"[INFO] Last date of the month: {last_date}")
+    return last_date
 
 @st.cache_data(show_spinner=False)
 def fetch_data_from_db(dates, later=True):
@@ -120,6 +127,7 @@ def fetch_data_from_db(dates, later=True):
     SELECT *
     FROM cte
     WHERE rn=1
+    AND (PIPELINE like '%DSX%' OR PIPELINE like '%Renewals%')
     AND deal_stage NOT IN ('7_closed_won', '7_closed_lost')
     """.strip()
 

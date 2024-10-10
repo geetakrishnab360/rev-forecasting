@@ -5,10 +5,11 @@ from bokeh.themes import default
 from plotly.subplots import make_subplots
 from plotly import colors
 from dotenv import load_dotenv
-from scipy.optimize import minimize
+from scipy.optimize import minimize, differential_evolution
 from snowflake_utils import (
     convert_period_to_dates,
     convert_dates_to_string,
+    get_end_of_month,
     fetch_data_from_db,
     fetch_weightages,
 )
@@ -39,6 +40,7 @@ from components import (
     hide_sidebar,
 )
 from streamlit_option_menu import option_menu
+from datetime import datetime
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -168,11 +170,20 @@ def change_experiment():
 def pull_data():
     if st.session_state.get("enter-custom-dates", False):
         pass
-    else:
+    elif not st.session_state.get("enter-start-end-dates", False):
         start_date, end_date = convert_period_to_dates(
             st.session_state.get("data_period", 6)
         )
         st.session_state["dates_string"] = convert_dates_to_string(start_date, end_date)
+    else:
+        start_date = get_end_of_month(st.session_state.get('start_year', 2024),
+                                      st.session_state.get('start_month', 'Jan'))
+        end_date = get_end_of_month(st.session_state.get('end_year', 2024), st.session_state.get('end_month', 'Jun'))
+        st.session_state["dates_string"] = ",".join(
+            [
+                f"""'{date.strftime("%Y-%m-%d")}'"""
+                for date in pd.date_range(start_date, end_date, freq="M")
+            ])
 
     data = fetch_data_from_db(st.session_state["dates_string"])
 
@@ -395,12 +406,22 @@ def calculate_current_vs_act_error(eff_probabilities, temp, cohorts, actuals):
     selected_cohort_df["eff_probability"] = eff_probabilities
     prob_map = dict(zip(cohorts, eff_probabilities))
     temp["final_probability"] = temp.cohort.map(prob_map).fillna(0.0)
+    res = 0
+    temp_actuals = actuals.reset_index()
+    temp_actuals['snapshot_date'] = pd.to_datetime(temp_actuals.snapshot_date)
+    for d in temp.snapshot_month.unique():
+        temp1 = temp[temp.snapshot_month == d].copy()
+        forecast_results_sw = calculate_forecasts(temp1, ["final_probability"], ["amount"], "2024-07-01")
+        actuals_total = st.session_state["actual_df"][
+            (st.session_state["actual_df"].hubspot_id.isin(forecast_results_sw[d].record_id)) & (
+                    st.session_state["actual_df"].date >= d)].amount.sum()
+        forecasts = forecast_results_sw[d].amount.sum()
+        res += (forecasts - actuals_total.sum()) ** 2
 
     forecast_results = calculate_forecasts(temp, ["final_probability"], ["amount"], "2024-07-01")
     st.session_state["forecast_results"]["Current"] = forecast_results.copy()
-
-    total_forecasts = np.array([_res["amount"].sum().item() for _res in forecast_results.values()])
-    return np.mean(abs(1 - total_forecasts / actuals))
+    return res / 1e12
+    # # return np.mean(abs(1 - total_forecasts / actuals))
 
 
 def optimize_eff_probability(max_iter, progress_bar, progress_text):
@@ -447,19 +468,20 @@ def optimize_eff_probability(max_iter, progress_bar, progress_text):
     _act_df["month_diff"] = (_act_df["date"].dt.year - _act_df["snapshot_date"].dt.year) * 12 + (
             _act_df["date"].dt.month - _act_df["snapshot_date"].dt.month)
     _act_df = _act_df[_act_df["month_diff"] >= 1].copy()
-    _actuals = _act_df.groupby("snapshot_date").amount.sum().values
+    _actuals = _act_df.groupby("snapshot_date").amount.sum()
 
     selected_cohort_df_1 = st.session_state["cohort_df"][
         (st.session_state["cohort_df"]["selected"] == True) & (
             (st.session_state["cohort_df"]["cohort"] != 'cohort 0')
         )
         ].copy()
-    initial_guess = selected_cohort_df_1["eff_probability"].values
+    # initial_guess = selected_cohort_df_1["eff_probability"].values
+    initial_guess = np.zeros_like(selected_cohort_df_1["eff_probability"].values)
     st.session_state["initial_probabilities"] = initial_guess.copy()
     cohorts = selected_cohort_df_1.cohort.tolist()
     bounds = [(0, 1) for _ in range(len(initial_guess))]
 
-    def progress_callback(xk):
+    def progress_callback(xk, b):
         progress = min(1.0, progress_callback.iteration / max_iter)
         progress_bar.progress(progress)
         progress_text.text(f"Optimization progress: {int(progress * 100)}%")
@@ -467,16 +489,32 @@ def optimize_eff_probability(max_iter, progress_bar, progress_text):
 
     progress_callback.iteration = 0
 
+    # constraints = {'type': 'ineq', 'fun': lambda x: x[0] <= x[1] <= x[2] <= x[3]}
+    constraints = {
+        'type': 'ineq',
+        'fun': lambda x: [x[1] - x[0],  # x[1] >= x[0]
+                          x[4] - x[3],  # x[2] >= x[1]
+                          # x[3] - x[2]
+                          ]  # x[3] >= x[2]
+    }
+
     result = minimize(
         calculate_current_vs_act_error,
         initial_guess,
         bounds=bounds,
         method="SLSQP",
-        options={"maxiter": max_iter, "ftol": 1e-4, "disp": False},
+        options={"maxiter": max_iter,
+                 # "ftol": 1e-6  ,
+                 "disp": True},
         callback=progress_callback,
         args=(temp, cohorts, _actuals),
+        # constraints=constraints
     )
 
+    # result = differential_evolution(calculate_current_vs_act_error, x0=initial_guess, bounds=bounds,
+    #                                 args=(temp, cohorts, _actuals), callback=progress_callback,
+    #                                 atol=1e-2, tol=1e-2, maxiter=max_iter, disp=True)
+    print(result)
     if result.success:
         optimized_eff_probabilities = result.x
         st.session_state["cohort_df"].loc[
@@ -623,17 +661,75 @@ with left_pane:
     #     "<div class='date-period-text'>Selected Period : Jun 2024</div>",
     #     unsafe_allow_html=True,
     # )
-    if 'data_period' not in st.session_state:
-        st.session_state['data_period'] = 6
+    if not st.session_state.get("enter-start-end-dates", False):
+        if 'data_period' not in st.session_state:
+            st.session_state['data_period'] = 6
 
-    st.selectbox(
-        "Data Period",
-        options=[1, 3, 6],
-        format_func=format_period_text,
-        key='data_periodd',
-        index=([1, 3, 6]).index(st.session_state['data_period']),
-        on_change=record_changes,
-        args=('data_period', 'data_periodd'),
+        st.selectbox(
+            "Data Period",
+            options=[1, 3, 6],
+            format_func=format_period_text,
+            key='data_periodd',
+            index=([1, 3, 6]).index(st.session_state['data_period']),
+            on_change=record_changes,
+            args=('data_period', 'data_periodd'),
+        )
+    else:
+        col1, col2 = st.columns(2)
+        MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        with col1:
+            # st.subheader("Start Date")
+            if 'start_month_input' not in st.session_state:
+                st.session_state['start_month_input'] = 'Jan'
+            st.selectbox(
+                "Start Month",
+                options=MONTHS,
+                index=MONTHS.index(st.session_state['start_month_input']),
+                key='start_month_inputt',
+                on_change=record_changes,
+                args=('start_month_input', 'start_month_inputt')
+            )
+            if 'start_year_input' not in st.session_state:
+                st.session_state['start_year_input'] = 2024
+            st.number_input(
+                "Start Year",
+                value=st.session_state['start_year_input'],
+                min_value=2000,
+                max_value=datetime.now().year,
+                step=1,
+                key='start_year_inputt',
+                on_change=record_changes,
+                args=('start_year_input', 'start_year_inputt')
+            )
+
+        with col2:
+            # st.subheader("End Date")
+            if 'end_month_input' not in st.session_state:
+                st.session_state['end_month_input'] = 'Jun'
+            st.selectbox(
+                "Emd Month",
+                options=MONTHS,
+                index=MONTHS.index(st.session_state['end_month_input']),
+                key='end_month_inputt',
+                on_change=record_changes,
+                args=('end_month_input', 'end_month_inputt')
+            )
+            if 'end_year_input' not in st.session_state:
+                st.session_state['end_year_input'] = 2024
+            st.number_input(
+                "End Year",
+                value=st.session_state['end_year_input'],
+                min_value=2000,
+                max_value=datetime.now().year,
+                step=1,
+                key='end_year_inputt',
+                on_change=record_changes,
+                args=('end_year_input', 'end_year_inputt')
+            )
+
+    st.checkbox(
+        "Enter Date Range",
+        key="enter-start-end-dates",
     )
 
     st.button("Fetch Data", on_click=pull_data)
@@ -693,6 +789,7 @@ with main_pane:
             "fulfillment_type",
             "pipeline",
             "deal_type",
+            "deal_type_new"
         ],
         key='cohort_selected_featuress',
         default=st.session_state['cohort_selected_features'],
