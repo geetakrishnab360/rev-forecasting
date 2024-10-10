@@ -47,7 +47,7 @@ def get_end_of_month(year, month):
     month_number = datetime.strptime(month, '%b').month
     last_day = calendar.monthrange(year, month_number)[1]
     last_date = datetime(year, month_number, last_day).date()
-    print(f"[INFO] Last date of the month: {last_date}")
+    # print(f"[INFO] Last date of the month: {last_date}")
     return last_date
 
 @st.cache_data(show_spinner=False)

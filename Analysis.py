@@ -170,21 +170,21 @@ def change_experiment():
 def pull_data():
     if st.session_state.get("enter-custom-dates", False):
         pass
-    elif not st.session_state.get("enter-start-end-dates", False):
-        start_date, end_date = convert_period_to_dates(
-            st.session_state.get("data_period", 6)
-        )
-        st.session_state["dates_string"] = convert_dates_to_string(start_date, end_date)
-    else:
-        start_date = get_end_of_month(st.session_state.get('start_year', 2024),
-                                      st.session_state.get('start_month', 'Jan'))
-        end_date = get_end_of_month(st.session_state.get('end_year', 2024), st.session_state.get('end_month', 'Jun'))
+    elif 'enter-start-end-dates' in st.session_state and st.session_state['enter-start-end-dates']:
+
+        start_date = get_end_of_month(st.session_state.get('start_year_input', 2024),
+                                      st.session_state.get('start_month_input', 'Jan'))
+        end_date = get_end_of_month(st.session_state.get('end_year_input', 2024), st.session_state.get('end_month_input', 'Jun'))
         st.session_state["dates_string"] = ",".join(
             [
                 f"""'{date.strftime("%Y-%m-%d")}'"""
                 for date in pd.date_range(start_date, end_date, freq="M")
             ])
-
+    else:
+        start_date, end_date = convert_period_to_dates(
+            st.session_state.get("data_period", 6)
+        )
+        st.session_state["dates_string"] = convert_dates_to_string(start_date, end_date)
     data = fetch_data_from_db(st.session_state["dates_string"])
 
     st.session_state["hubspot_id_dict"], st.session_state["data_df"] = (
@@ -726,10 +726,14 @@ with left_pane:
                 on_change=record_changes,
                 args=('end_year_input', 'end_year_inputt')
             )
-
+    if 'enter-start-end-dates' not in st.session_state:
+        st.session_state['enter-start-end-dates'] = False
     st.checkbox(
         "Enter Date Range",
-        key="enter-start-end-dates",
+        key="enter-start-end-datess",
+        value=st.session_state['enter-start-end-dates'],
+        on_change=record_changes,
+        args=('enter-start-end-dates', 'enter-start-end-datess')
     )
 
     st.button("Fetch Data", on_click=pull_data)
