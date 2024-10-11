@@ -1,39 +1,24 @@
-import streamlit as st
-import plotly.graph_objs as go
+import warnings
 from io import BytesIO
-from plotly.subplots import make_subplots
-from plotly import colors
-from dotenv import load_dotenv
-from scipy.optimize import minimize
-from snowflake_utils import (
-    convert_period_to_dates,
-    convert_dates_to_string,
-    fetch_data_from_db, fetch_weightages,
-)
+
 import pandas as pd
-import numpy as np
-from data_utils import (
-    preprocess,
-    calculate_forecasts,
-    _calculate_snapshot_monthly_number,
-    calculate_cohort_error,
-    convert_to_cohort_df,
-    prepare_actual_rev_data,
-    aggregate_snapshot_numbers,
-    record_changes,
-)
-from db import (
-    create_database,
-    insert_experiment_into_db,
-    fetch_all_experiments,
-    fetch_experiment,
-)
+import plotly.graph_objs as go
+import streamlit as st
+from plotly import colors
+from streamlit_option_menu import option_menu
+
 from components import (
     set_header,
     hide_sidebar,
 )
-from streamlit_option_menu import option_menu
-import warnings
+from data_utils import (
+    calculate_forecasts,
+    convert_to_cohort_df,
+    record_changes,
+)
+from db import (
+    fetch_experiment,
+)
 
 warnings.filterwarnings("ignore")
 

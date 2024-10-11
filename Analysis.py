@@ -1,19 +1,19 @@
-import streamlit as st
-import plotly.graph_objs as go
-from io import BytesIO
-from plotly.subplots import make_subplots
-from plotly import colors
-from dotenv import load_dotenv
-from scipy.optimize import minimize
-from snowflake_utils import (
-    convert_period_to_dates,
-    convert_dates_to_string,
-    get_end_of_month,
-    fetch_data_from_db,
-    fetch_weightages,
-)
-import pandas as pd
+import warnings
+from datetime import datetime
 import numpy as np
+import pandas as pd
+import plotly.graph_objs as go
+import streamlit as st
+from dotenv import load_dotenv
+from plotly import colors
+from plotly.subplots import make_subplots
+from scipy.optimize import minimize
+from streamlit_option_menu import option_menu
+
+from components import (
+    set_header,
+    hide_sidebar,
+)
 from data_utils import (
     preprocess,
     calculate_forecasts,
@@ -22,8 +22,6 @@ from data_utils import (
     convert_to_cohort_df,
     prepare_actual_rev_data,
     aggregate_snapshot_numbers,
-    prepare_bu_revenue_data,
-    preprocess_bu_rev,
     record_changes,
 )
 from db import (
@@ -31,16 +29,14 @@ from db import (
     insert_experiment_into_db,
     fetch_all_experiments,
     fetch_experiment,
-    delete_bu_from_db,
-    insert_bu_into_db,
 )
-from components import (
-    set_header,
-    hide_sidebar,
+from snowflake_utils import (
+    convert_period_to_dates,
+    convert_dates_to_string,
+    get_end_of_month,
+    fetch_data_from_db,
+    fetch_weightages,
 )
-from streamlit_option_menu import option_menu
-from datetime import datetime
-import warnings
 
 warnings.filterwarnings("ignore")
 
@@ -195,7 +191,7 @@ def pull_data():
         del st.session_state["forecast_results"]
 
 
-def cohort_generate_forecast(experiment_name="Current"):
+def cohort_generate_forecast():
     selected_cohort_df_1 = st.session_state["cohort_df"][
         (st.session_state["cohort_df"]["selected"] == True) & (
             (st.session_state["cohort_df"]["cohort"] != 'cohort 0')
