@@ -1,0 +1,41 @@
+* {
+    padding: 0;
+    margin: 0;
+}
+
+
+.main-header {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0;
+    margin: 0 20px;
+}
+
+.main-header h1 {
+    font-size: 2rem;
+}
+
+.logo {
+    max-height: 72px;
+    /* max-width: 300px; */
+    object-fit: cover;
+}
+
+
+header {
+    display: none !important;
+}
+
+.date-to-1st {
+    font-size: 0.8rem;
+    /*font-weight: bold;*/
+    color: yellow;
+    background-color: transparent !important;
+}
+.stAppViewBlockContainer {
+    padding-top: 0;
+    margin-top: 0;
+    height: 100vh !important;
+}

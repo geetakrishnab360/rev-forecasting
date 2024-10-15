@@ -1,0 +1,6 @@
+numpy==1.26.4
+pandas==2.2.2
+prophet==1.1.5
+plotly==5.22.0
+snowflake-connector-python==3.12.1
+pytz==2024.1

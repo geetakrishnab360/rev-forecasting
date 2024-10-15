@@ -1,40 +1,305 @@
 import datetime as datet
 import warnings
 from io import BytesIO
-
 import pandas as pd
 import plotly.graph_objs as go
-import streamlit as st
 from dateutil.relativedelta import relativedelta
 from dotenv import load_dotenv
 from sklearn.preprocessing import MinMaxScaler
 from streamlit_option_menu import option_menu
-
+import pytz
+from model_utilities import *
+from new_db import *
+from new_data_utils import *
+import logging
+import numpy as np
+from pandas.tseries.holiday import USFederalHolidayCalendar
+from prophet import Prophet
+import boto3
+import simplejson as json
+import time
+import uuid
+from datetime import datetime
 from components import (
     set_header,
     hide_sidebar,
 )
 from data_utils import (
     create_exo_df,
-    preprocess_bu_rev,
-    prepare_bu_revenue_data,
     update_df,
     record_changes,
     update_exo_df,
 )
-from db import (
-    create_bu_database,
-    insert_bu_into_db,
-    delete_bu_from_db,
-    fetch_all_bu_data,
-    update_bu_in_db,
-    create_forecast_database,
-    insert_forecast_into_db,
-    fetch_all_forecast_data,
-    delete_forecast_from_db,
+from new_db import (
+    fetch_revenue_data_from_db,
+    insert_new_rev_data,
+    update_rev_data,
+    fetch_forecast_data,
 )
+import streamlit as st
 
+np.float_ = np.float64
 warnings.filterwarnings("ignore")
+
+aws_access_key_id = xxxxx
+aws_secret_access_key = xxxxx
+aws_session_token = xxxxx
+session = boto3.Session(
+    aws_access_key_id=aws_access_key_id,
+    aws_secret_access_key=aws_secret_access_key,
+    aws_session_token=aws_session_token,
+    region_name='us-east-1'
+)
+lambda_client = session.client('lambda')
+LAMBDA_FUNCTION_NAME = 'test-revforecasting1'
+
+
+def invoke_lambda(user,
+                  model_name,
+                  holiday_dates_dict,
+                  bu,
+                  final_df_dict,
+                  test_dates,
+                  request_id):
+    payload = {'user': user,
+               'model_name': model_name,
+               'holiday_dates_dict': holiday_dates_dict,
+               'bu': bu,
+               'final_df_dict': final_df_dict,
+               'test_dates': test_dates,
+               'request_id': request_id}
+    response = lambda_client.invoke(
+        FunctionName=LAMBDA_FUNCTION_NAME,
+        InvocationType='Event',
+        Payload=json.dumps(payload, ignore_nan=True)
+    )
+    return request_id
+
+
+model = Prophet()
+logger = logging.getLogger('cmdstanpy')
+logger.setLevel(logging.ERROR)
+
+exo_df = create_exo_df_()
+st.session_state['exo_df_'] = exo_df.copy()
+rev_data = fetch_revenue_data_from_db()
+rev_data = preprocess(rev_data)
+st.session_state['rev_data'] = rev_data.copy()
+
+
+def dsx_method(rev_data, exo_df):
+    bu = 'dsx'
+    dsx_df = rev_data[rev_data['business_unit'] == bu]
+    final_df = dsx_df.merge(exo_df, on='ds', how='right')
+    prediction_df = pd.date_range('2024-11-01', '2025-08-01', freq='MS', name='ds').to_frame().reset_index(drop=True)
+    final_df = pd.concat((final_df, prediction_df))
+    final_df = final_df[final_df.ds >= '2020-07-01']
+    final_df = final_df.reset_index(drop=True)
+
+    holiday_dates = pd.DataFrame({
+        'holiday': ['NA'] * 3,
+        'ds': pd.to_datetime(['2024-01-01', '2024-02-01', '2024-03-01']),
+        'lower_window': 0,
+        'upper_window': 1
+    })
+    test_dates = ['2024-04-01', '2024-06-01']
+
+    return holiday_dates, final_df, test_dates
+
+
+def bts_method(rev_data,exo_df):
+    holiday_dates = None
+    bu = 'bts'
+    bts_df = rev_data[rev_data['business_unit'] == bu]
+    prediction_df = pd.date_range('2024-09-01', '2025-08-01', freq='MS', name='ds').to_frame().reset_index(drop=True)
+    final_df = pd.concat((bts_df, prediction_df))
+    final_df = final_df[final_df.ds >= '2021-01-01']
+    final_df = final_df.reset_index(drop=True)
+    start_date = '2019-01-01'
+    end_date = '2025-12-31'
+    dates = pd.date_range(start=start_date, end=end_date, freq='D')
+
+    # Define the US Federal Holiday Calendar
+    us_cal = USFederalHolidayCalendar()
+
+    # Get all the holidays between 2019 and 2025
+    holidays = us_cal.holidays(start=start_date, end=end_date)
+
+    # Filter out weekends and holidays to get working days
+    business_days = dates[(dates.weekday < 5) & (~dates.isin(holidays))]
+
+    # Create a dataframe to group by year and month, counting working days
+    df = pd.DataFrame({'Date': business_days})
+    df['Year'] = df['Date'].dt.year
+    df['Month'] = df['Date'].dt.month
+    working_days_df = df.groupby(['Year', 'Month']).count().reset_index().rename(columns=
+                                                                                 {'Date': 'total_working_days',
+                                                                                  'Year': 'year',
+                                                                                  'Month': 'month'
+                                                                                  })
+    final_df['month'] = final_df.ds.dt.month
+    final_df['year'] = final_df.ds.dt.year
+    final_df = final_df.merge(working_days_df, on=['year', 'month'], how='left').copy()
+    final_df['y_monthly'] = final_df['y']
+    final_df['y'] = final_df['y_monthly'] / final_df['total_working_days']
+    test_dates = ['2024-04-01']
+    return holiday_dates, final_df, test_dates
+
+
+def emea_method(rev_data,exo_df):
+    bu = 'emea'
+    dsx_df = rev_data[rev_data['business_unit'] == bu]
+    final_df = dsx_df.merge(exo_df, on='ds', how='right')
+    prediction_df = pd.date_range('2024-11-01', '2025-08-01', freq='MS', name='ds').to_frame().reset_index(drop=True)
+    final_df = pd.concat((final_df, prediction_df))
+    final_df = final_df[final_df.ds >= '2021-01-01']
+    final_df = final_df.reset_index(drop=True)
+
+    holiday_dates = pd.DataFrame({
+        'holiday': ['NA'],
+        'ds': pd.to_datetime(['2021-12-01']),
+        'lower_window': 0,
+        'upper_window': 1
+    })
+    test_dates = ['2024-04-01', '2024-06-01']
+    return holiday_dates, final_df, test_dates
+
+
+def mlabs_method(rev_data,exo_df):
+    bu = 'mlabs'
+    holiday_dates = None
+    mlabs_df = rev_data[rev_data['business_unit'] == bu]
+    prediction_df = pd.date_range('2024-09-01', '2025-08-01', freq='MS', name='ds').to_frame().reset_index(drop=True)
+    final_df = pd.concat((mlabs_df, prediction_df))
+    final_df = final_df[final_df.ds >= '2022-01-01']
+    final_df = final_df.reset_index(drop=True)
+    start_date = '2019-01-01'
+    end_date = '2025-12-31'
+    dates = pd.date_range(start=start_date, end=end_date, freq='D')
+
+    # Define the US Federal Holiday Calendar
+    us_cal = USFederalHolidayCalendar()
+
+    # Get all the holidays between 2019 and 2025
+    holidays = us_cal.holidays(start=start_date, end=end_date)
+
+    # Filter out weekends and holidays to get working days
+    business_days = dates[(dates.weekday < 5) & (~dates.isin(holidays))]
+
+    # Create a dataframe to group by year and month, counting working days
+    df = pd.DataFrame({'Date': business_days})
+    df['Year'] = df['Date'].dt.year
+    df['Month'] = df['Date'].dt.month
+    working_days_df = df.groupby(['Year', 'Month']).count().reset_index().rename(columns=
+                                                                                 {'Date': 'total_working_days',
+                                                                                  'Year': 'year',
+                                                                                  'Month': 'month'
+                                                                                  })
+    final_df['month'] = final_df.ds.dt.month
+    final_df['year'] = final_df.ds.dt.year
+    final_df = final_df.merge(working_days_df, on=['year', 'month'], how='left').copy()
+    test_dates = ['2024-05-01', '2024-06-01']
+    return holiday_dates, final_df, test_dates
+
+
+def fpai_method(rev_data,exo_df):
+    bu = 'fpai'
+    fpai_df = rev_data[rev_data['business_unit'] == bu]
+    final_df = fpai_df.merge(exo_df, on='ds', how='right')
+    prediction_df = pd.date_range('2024-09-01', '2025-08-01', freq='MS', name='ds').to_frame().reset_index(drop=True)
+    final_df = pd.concat((final_df, prediction_df))
+    final_df = final_df[final_df.ds >= '2023-01-01']
+    final_df = final_df.reset_index(drop=True)
+    start_date = '2019-01-01'
+    end_date = '2025-12-31'
+    dates = pd.date_range(start=start_date, end=end_date, freq='D')
+
+    # Define the US Federal Holiday Calendar
+    us_cal = USFederalHolidayCalendar()
+
+    # Get all the holidays between 2019 and 2025
+    holidays = us_cal.holidays(start=start_date, end=end_date)
+
+    # Filter out weekends and holidays to get working days
+    business_days = dates[(dates.weekday < 5) & (~dates.isin(holidays))]
+
+    # Create a dataframe to group by year and month, counting working days
+    df = pd.DataFrame({'Date': business_days})
+    df['Year'] = df['Date'].dt.year
+    df['Month'] = df['Date'].dt.month
+    working_days_df = df.groupby(['Year', 'Month']).count().reset_index().rename(columns=
+                                                                                 {'Date': 'total_working_days',
+                                                                                  'Year': 'year',
+                                                                                  'Month': 'month'
+                                                                                  })
+    final_df['month'] = final_df.ds.dt.month
+    final_df['year'] = final_df.ds.dt.year
+    final_df = final_df.merge(working_days_df, on=['year', 'month'], how='left').copy()
+    test_dates = ['2024-06-01']
+    holiday_dates = pd.DataFrame({
+        'holiday': ['NA'] * 3,
+        'ds': pd.to_datetime(['2024-01-01', '2024-02-01', '2024-03-01']),
+        'lower_window': 0,
+        'upper_window': 1
+    })
+    return holiday_dates, final_df, test_dates
+
+
+def main(user):
+    bus = ['dsx', 'bts', 'emea', 'mlabs', 'fpai']
+    # bus = ['bts']
+    uniq_id = str(uuid.uuid4())
+    request_ids = [uniq_id for _ in range(len(bus))]
+    model_info_dict = {}
+    for bu in bus:
+        model_info_dict[bu] = {
+            'experiment_id': request_ids[bus.index(bu)],
+            'business_unit': bu,
+            'start_date': datetime.now().astimezone(pytz.timezone('GMT')),
+            'status': 'initiated',
+            'user': user,
+            'failure_reason': None
+        }
+        if bu == 'dsx':
+            holiday_dates, final_df, test_dates = dsx_method(st.session_state['rev_data'], st.session_state['exo_df_'])
+            holiday_dates['ds'] = holiday_dates['ds'].dt.strftime('%Y-%m-%d')
+            holiday_dates_dict = holiday_dates.to_dict()
+            final_df['ds'] = final_df['ds'].dt.strftime('%Y-%m-%d')
+            final_df_dict = final_df.to_dict()
+        elif bu == 'bts':
+            holiday_dates, final_df, test_dates = bts_method(st.session_state['rev_data'], st.session_state['exo_df_'])
+            holiday_dates_dict = {}
+            final_df['ds'] = final_df['ds'].dt.strftime('%Y-%m-%d')
+            final_df_dict = final_df.to_dict()
+        elif bu == 'emea':
+            holiday_dates, final_df, test_dates = emea_method(st.session_state['rev_data'], st.session_state['exo_df_'])
+            holiday_dates['ds'] = holiday_dates['ds'].dt.strftime('%Y-%m-%d')
+            holiday_dates_dict = holiday_dates.to_dict()
+            final_df['ds'] = final_df['ds'].dt.strftime('%Y-%m-%d')
+            final_df_dict = final_df.to_dict()
+        elif bu == 'mlabs':
+            holiday_dates, final_df, test_dates = mlabs_method(st.session_state['rev_data'], st.session_state['exo_df_'])
+            holiday_dates_dict = {}
+            final_df['ds'] = final_df['ds'].dt.strftime('%Y-%m-%d')
+            final_df_dict = final_df.to_dict()
+        elif bu == 'fpai':
+            holiday_dates, final_df, test_dates = fpai_method(st.session_state['rev_data'], st.session_state['exo_df_'])
+            holiday_dates['ds'] = holiday_dates['ds'].dt.strftime('%Y-%m-%d')
+            holiday_dates_dict = holiday_dates.to_dict()
+            final_df['ds'] = final_df['ds'].dt.strftime('%Y-%m-%d')
+            final_df_dict = final_df.to_dict()
+
+        insert_experiments_data_to_db(model_info_dict[bu])
+        req_id = invoke_lambda(user=user,
+                               model_name=f'Prophet_{bu}',
+                               holiday_dates_dict=holiday_dates_dict,
+                               bu=bu,
+                               final_df_dict=final_df_dict,
+                               test_dates=test_dates,
+                               request_id=request_ids[bus.index(bu)])
+        print(f"Lambda invocation triggered successfully for {bu} with request ID: {req_id}")
+    return uniq_id
+
 
 st.set_page_config(layout="wide", page_title="Top Down", initial_sidebar_state="collapsed")
 hide_sidebar()
@@ -75,26 +340,21 @@ if page == 'Pipeline Forecast':
 set_header("Top Down Forecasting")
 
 load_dotenv()
-create_bu_database()
-create_forecast_database()
-delete_forecast_from_db('karthik')
 
-with open("./styles.css") as f:
+with open("./styles1.css") as f:
     st.markdown(
         f"<style>{f.read()}</style>",
         unsafe_allow_html=True,
     )
 
-if "bu_actual_dfs" not in st.session_state:
-    st.session_state["bu_actual_dfs"] = preprocess_bu_rev(prepare_bu_revenue_data())
-
-if 'is_bu_inserted' not in st.session_state:
-    delete_bu_from_db('karthik')
-    insert_bu_into_db(st.session_state["bu_actual_dfs"], 'karthik')
-    st.session_state['is_bu_inserted'] = True
-
-if 'is_fetched' not in st.session_state and 'is_bu_inserted' in st.session_state and st.session_state['is_bu_inserted']:
-    st.session_state['all_bu_dfs'] = fetch_all_bu_data('karthik')
+if 'is_fetched' not in st.session_state:
+    data = fetch_revenue_data_from_db()
+    data = data.rename({"BUSINESS_UNIT": "bu", "DATE": "ds", "REVENUE": "y"}, axis=1)
+    data = data[data['bu'] != 'test']
+    data['ds'] = pd.to_datetime(data['ds'])
+    data['ds'] = data['ds'].dt.strftime('%Y-%m-%d %H:%M:%S')
+    data['y'] = data['y'].astype(float)
+    st.session_state['all_bu_dfs'] = data.copy()
     st.session_state['is_fetched'] = True
 
 latest_actual_date_time = st.session_state['all_bu_dfs']['ds'].max()
@@ -103,56 +363,8 @@ latest_actual_date = datet.datetime.strptime(latest_actual_date_time,
                                              "%Y-%m-%d %H:%M:%S").date() + relativedelta(months=+1)
 st.session_state['latest_actual_date'] = latest_actual_date
 
-left_pane, main_pane = st.columns([5, 1])
+left_pane,_ = st.columns([8, 1])
 with left_pane:
-    # col1, col2, col3 = st.columns(3)
-    #
-    # with col1:
-    #     selected_bu = st.selectbox('Select Business Unit', st.session_state['all_bu_dfs']['bu'].unique())
-    #
-    # with col2:
-    #     selected_date = st.date_input('Select Date')
-    #     selected_date = pd.to_datetime(selected_date)
-    #
-    # with col3:
-    #     selected_y = st.number_input('Enter Value for y', min_value=0.0)
-    #
-    # # st.write('Selected Business Unit:', selected_bu)
-    # # st.write('Selected Date:', selected_date)
-    # # st.write('Selected Value for y:', selected_y)
-    # # st.write(st.session_state['all_bu_dfs'].dtypes)
-    # # st.write(st.session_state['all_bu_dfs'].tail())
-    # # st.write(st.session_state['all_bu_dfs'].loc[(st.session_state['all_bu_dfs']['bu'] == selected_bu)])
-    # # st.write(st.session_state['all_bu_dfs'].loc[st.session_state['all_bu_dfs']['ds'] == str(selected_date)])
-    #
-    # cols = st.columns((0.5, 1))
-    #
-    # with cols[0]:
-    #     if st.button('Insert Data'):
-    #         if not st.session_state['all_bu_dfs'].loc[(st.session_state['all_bu_dfs']['bu'] == selected_bu) & (
-    #                 st.session_state['all_bu_dfs']['ds'] == str(selected_date))].empty:
-    #             st.write('Data already exists. Please update the data')
-    #             # st.stop()
-    #         else:
-    #             new_data = pd.DataFrame({'bu': [selected_bu], 'ds': [str(selected_date)], 'y': [selected_y]})
-    #             insert_bu_into_db(new_data, 'karthik')
-    #             new_data['y'] = new_data['y'].astype(float)
-    #             st.session_state['all_bu_dfs'] = pd.concat([st.session_state['all_bu_dfs'], new_data])
-    #             st.write('Data Inserted Successfully')
-    #
-    # with cols[1]:
-    #     if st.button('Update Data'):
-    #         if st.session_state['all_bu_dfs'].loc[(st.session_state['all_bu_dfs']['bu'] == selected_bu) & (
-    #                 st.session_state['all_bu_dfs']['ds'] == str(selected_date))].empty:
-    #             st.write('Data does not exist. Please insert the data first')
-    #             # st.stop
-    #         else:
-    #             new_data = pd.DataFrame({'bu': [selected_bu], 'ds': [str(selected_date)], 'y': [selected_y]})
-    #             update_bu_in_db(new_data, 'karthik')
-    #             st.session_state['all_bu_dfs'].loc[(st.session_state['all_bu_dfs']['bu'] == selected_bu) & (
-    #                     st.session_state['all_bu_dfs']['ds'] == str(selected_date)), 'y'] = selected_y
-    #             st.write('Data Updated Successfully')
-
     with st.expander('Data Inputs', expanded=False):
         if 'edit_bu' not in st.session_state:
             st.session_state['edit_bu'] = pd.DataFrame(columns=['BU', 'Date', 'Revenue'])
@@ -193,44 +405,6 @@ with left_pane:
             unsafe_allow_html=True,
         )
 
-        # selected_data = st.session_state['edit_bu'][st.session_state['edit_bu']['selected']]
-        # selected_data = selected_data.rename(columns={'BU': 'bu', 'Date': 'ds', 'Revenue': 'y'})
-        # selected_data['y'] = selected_data['y'].astype(float)
-        # selected_data['ds'] = selected_data['ds'].apply(lambda x: x.replace(day=1)).dt.strftime('%Y-%m-%d %H:%M:%S')
-        # st.session_state['is_update'] = False
-        # if len(selected_data) != 0:
-        #     selected_data = selected_data[['bu', 'ds', 'y']]
-        #     for i, row in selected_data.iterrows():
-        #         if len(st.session_state['all_bu_dfs'].loc[(st.session_state['all_bu_dfs']['bu'] == row['bu']) & (
-        #                 st.session_state['all_bu_dfs']['ds'] == row['ds'])]) != 0:
-        #             st.info("Are you sure you want to update the data?")
-        #             st.session_state['is_update'] = not st.button('Yes')
-        #             break
-        #
-        # if st.button('Save Edited Data', disabled=st.session_state['is_update']):
-        #     selected_data = st.session_state['edit_bu'][st.session_state['edit_bu']['selected']]
-        #     selected_data = selected_data.rename(columns={'BU': 'bu', 'Date': 'ds', 'Revenue': 'y'})
-        #     selected_data['y'] = selected_data['y'].astype(float)
-        #     selected_data['ds'] = selected_data['ds'].apply(lambda x: x.replace(day=1)).dt.strftime('%Y-%m-%d %H:%M:%S')
-        #
-        #     if len(selected_data) != 0:
-        #         selected_data = selected_data[['bu', 'ds', 'y']]
-        #         for i, row in selected_data.iterrows():
-        #             if len(st.session_state['all_bu_dfs'].loc[(st.session_state['all_bu_dfs']['bu'] == row['bu']) & (
-        #                     st.session_state['all_bu_dfs']['ds'] == row['ds'])]) != 0:
-        #                 row_c = pd.DataFrame(row).T
-        #                 row_c = row_c.reset_index(drop=True)
-        #                 update_bu_in_db(row_c, 'karthik')
-        #                 st.session_state['all_bu_dfs'].loc[(st.session_state['all_bu_dfs']['bu'] == row['bu']) & (
-        #                         st.session_state['all_bu_dfs']['ds'] == row['ds']), 'y'] = row['y']
-        #             else:
-        #                 row_c = pd.DataFrame(row).T
-        #                 row_c = row_c.reset_index(drop=True)
-        #                 insert_bu_into_db(row_c, 'karthik')
-        #                 st.session_state['all_bu_dfs'] = pd.concat([st.session_state['all_bu_dfs'], row_c])
-        #                 st.session_state['all_bu_dfs'] = st.session_state['all_bu_dfs'].reset_index(drop=True)
-
-        # new
         selected_data = st.session_state['edit_bu'][st.session_state['edit_bu']['selected']]
         selected_data = selected_data.rename(columns={'BU': 'bu', 'Date': 'ds', 'Revenue': 'y'})
         selected_data['y'] = selected_data['y'].astype(float)
@@ -269,18 +443,19 @@ with left_pane:
                         row_c = pd.DataFrame(row).T.reset_index(drop=True)
 
                         if not existing_entry.empty:
-                            update_bu_in_db(row_c, 'karthik')
+                            # update_bu_in_db(row_c, 'karthik')
+                            update_rev_data(row_c, 'karthik')
                             st.session_state['all_bu_dfs'].loc[
                                 (st.session_state['all_bu_dfs']['bu'] == row['bu']) &
                                 (st.session_state['all_bu_dfs']['ds'] == row['ds']), 'y'] = row['y']
                         else:
-                            insert_bu_into_db(row_c, 'karthik')
+                            # insert_bu_into_db(row_c, 'karthik')
+                            insert_new_rev_data(row_c, 'karthik')
                             st.session_state['all_bu_dfs'] = pd.concat(
                                 [st.session_state['all_bu_dfs'], row_c]).reset_index(
                                 drop=True)
                     cols = st.columns([0.4, 1])
                     cols[0].success("Data saved successfully")
-        # new end
 
         latest_actual_date_time = st.session_state['all_bu_dfs']['ds'].max()
         st.session_state['latest_actual_date_time'] = latest_actual_date_time
@@ -487,9 +662,26 @@ with left_pane:
             )
 
             st.plotly_chart(fig)
-        st.button('Run Models', key='run_models')
 
+        st.session_state['user'] = 'test_all'
+        if 'is_train' not in st.session_state:
+            st.session_state['is_train'] = False
+        if st.button('Train Models'):
+            st.session_state['experiment_id'] = main(st.session_state['user'])
+            st.session_state['is_train'] = True
+
+    # if not st.session_state['is_train']:
+    #     st.stop()
     with st.expander('Future Forecasts', expanded=True):
+        if 'fetch_forecast_data' not in st.session_state:
+            st.session_state['fetch_forecast_data'] = fetch_forecast_data()
+        fetched_data = st.session_state['fetch_forecast_data'].copy()
+        fetched_data = fetched_data.rename(
+            columns={'BUSINESS_UNIT': 'bu', 'DATE': 'ds', 'REVENUE': 'y', 'FORECAST_DATE': 'forecasted_ds',
+                     'MODEL_NAME': 'model', "USER": "user", "EXPERIMENT_ID": "experiment_id"})
+        fetched_data['y'] = fetched_data['y'].astype(float)
+        fetched_data['ds'] = pd.to_datetime(fetched_data['ds'])
+        fetched_data['forecasted_ds'] = pd.to_datetime(fetched_data['forecasted_ds'])
         cols = st.columns((1, 1, 1))
         if 'bu_forecast_selected' not in st.session_state:
             st.session_state['bu_forecast_selected'] = \
@@ -506,43 +698,33 @@ with left_pane:
                           index=[3, 6, 9, 12].index(st.session_state['forecast_months']),
                           on_change=record_changes, args=('forecast_months', 'forecast_monthss'))
         if 'selected_models' not in st.session_state:
-            st.session_state['selected_models'] = ['model1', 'model2']
-        cols[2].multiselect('Select models', options=['model1', 'model2'], key='selected_modelss',
+            st.session_state['selected_models'] = fetched_data['experiment_id'].unique().tolist()
+        cols[2].multiselect('Select models', options=fetched_data['experiment_id'].unique().tolist(),
+                            key='selected_modelss',
                             default=st.session_state['selected_models'],
                             on_change=record_changes, args=('selected_models', 'selected_modelss'))
 
         if len(list(st.session_state['selected_models'])) == 0:
             st.write('Please select atleast one model')
             st.stop()
-        # with cols[1]:
-        #     dates_full = [(st.session_state['latest_actual_date'] + relativedelta(months=+i)) for i in range(12)]
-        #     years = sorted(set(dates_full[i].strftime("%Y") for i in range(12)))
-        #     forecast_year = st.selectbox('Select Year', options=years, index=len(years) - 1)
-        # with cols[2]:
-        #     valid_months = [date.strftime("%B") for date in dates_full if date.year == int(forecast_year)]
-        #     forecast_month = st.selectbox('Select Month', options=valid_months, index=len(valid_months) - 1)
-        # forecast_date = pd.to_datetime(f'{forecast_year}-{forecast_month}-01')
+
         forecast_date = pd.to_datetime(latest_actual_date_time) + relativedelta(
             months=+st.session_state['forecast_months'])
-        # forecasted_date = pd.to_datetime(latest_actual_date_time)
-        st.session_state['models'] = {}
-        st.session_state['models']['forecasted_dates'] = [pd.to_datetime('2024-08-13'), pd.to_datetime('2024-08-16')]
-        forecast_df = pd.DataFrame(columns=['bu', 'ds', 'y', 'model', 'forecasted_ds'])
-        for i, model in enumerate(st.session_state['selected_models']):
-            st.session_state['models'][model] = pd.read_excel('data/models.xlsx', sheet_name=model)
-            st.session_state['models'][model]['model'] = model
-            st.session_state['models'][model]['forecasted_ds'] = st.session_state['models']['forecasted_dates'][i]
-            st.session_state['models'][model]['forecasted_ds'] = st.session_state['models'][model]['forecasted_ds']
-            forecast_df = pd.concat([forecast_df, st.session_state['models'][model]]).reset_index(drop=True)
-            insert_forecast_into_db(st.session_state['models'][model], 'karthik', model)
+        # st.session_state['models'] = {}
+        # st.session_state['models']['forecasted_dates'] = [pd.to_datetime('2024-08-13'), pd.to_datetime('2024-08-16')]
+        # forecast_df = pd.DataFrame(columns=['bu', 'ds', 'y', 'model', 'forecasted_ds'])
+        # for i, model in enumerate(st.session_state['selected_models']):
+        #     st.session_state['models'][model] = pd.read_excel('data/models.xlsx', sheet_name=model)
+        #     st.session_state['models'][model]['model'] = model
+        #     st.session_state['models'][model]['forecasted_ds'] = st.session_state['models']['forecasted_dates'][i]
+        #     st.session_state['models'][model]['forecasted_ds'] = st.session_state['models'][model]['forecasted_ds']
+        #     forecast_df = pd.concat([forecast_df, st.session_state['models'][model]]).reset_index(drop=True)
+        #     insert_forecast_into_db(st.session_state['models'][model], 'karthik', model)
 
-        fetched_data = fetch_all_forecast_data('karthik')
-        fetched_data['ds'] = pd.to_datetime(fetched_data['ds'])
-        fetched_data['forecasted_ds'] = pd.to_datetime(fetched_data['forecasted_ds'])
         forecast_df = fetched_data.copy()
-
-        forecast_df = forecast_df[(forecast_df['ds'] <= pd.to_datetime(forecast_date)) & (
-                forecast_df['ds'] > pd.to_datetime(latest_actual_date_time))]
+        forecast_df = forecast_df[(forecast_df['ds'] <= pd.to_datetime(forecast_date))]
+        # forecast_df = forecast_df[(forecast_df['ds'] <= pd.to_datetime(forecast_date)) & (
+        #         forecast_df['ds'] > pd.to_datetime(latest_actual_date_time))]
         forecast_df['ds'] = forecast_df['ds'].dt.strftime('%Y-%m-%d %H:%M:%S')
         forecast_df['forecasted_ds'] = forecast_df['forecasted_ds'].dt.strftime('%Y-%m-%d')
         st.session_state['future_forecast'] = forecast_df.copy()
@@ -567,7 +749,7 @@ with left_pane:
                     bu_data_forecast['ds'] >= str(pd.to_datetime(latest_actual_date_time) + relativedelta(
                         years=-int(st.session_state['past_years'])))]
                 for model in st.session_state['selected_models']:
-                    bu_data_model = bu_data_forecast[bu_data_forecast['model'] == model]
+                    bu_data_model = bu_data_forecast[bu_data_forecast['experiment_id'] == model]
                     fig.add_trace(
                         go.Scatter(
                             x=bu_data_model['ds'],
@@ -593,7 +775,7 @@ with left_pane:
             )
             bu_data_forecast = forecast_df[forecast_df['bu'] == st.session_state['bu_forecast_selected']]
             for model in st.session_state['selected_models']:
-                bu_data_model = bu_data_forecast[bu_data_forecast['model'] == model]
+                bu_data_model = bu_data_forecast[bu_data_forecast['experiment_id'] == model]
                 fig.add_trace(
                     go.Scatter(
                         x=bu_data_model['ds'],
@@ -611,157 +793,47 @@ with left_pane:
         )
 
         st.plotly_chart(fig)
-
+        if st.button('Refresh Forecast'):
+            st.session_state['fetch_forecast_data'] = fetch_forecast_data()
         st.divider()
 
-        st.header('Forecast Data')
-        ## Download forecast data
-        download_table = forecast_df.copy()
-        download_table['ds'] = pd.to_datetime(download_table['ds'])
-        download_table['ds'] = download_table['ds'].dt.date
-        download_table['y'] = download_table['y'].astype(float)
-        download_table = download_table.rename(
-            columns={'ds': 'Date', 'y': 'Revenue', 'bu': 'BU', 'forecasted_ds': 'Forecasted Date', 'model': 'Model'})
-        download_table_filename = 'future-forecast.xlsx'
-        buffer = BytesIO()
-        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-            for i, model in enumerate(st.session_state['selected_models']):
-                model_table = download_table[download_table['Model'] == model].reset_index(drop=True)
-                model_table = model_table.drop(columns=['Model'])
-                model_table.to_excel(writer, index=False, sheet_name=f"Model_{i + 1}")
-            writer.close()
-        st.download_button(label="Download Data", data=buffer.getvalue(), file_name=download_table_filename,
-                           mime="application/vnd.ms-excel", key='download_forecast_data')
-
-        ## Display forecast data
-        if st.session_state['bu_forecast_selected'] == "Overall":
-            forecast_table = st.session_state['future_forecast'].copy()
-        else:
-            forecast_table = forecast_df[forecast_df['bu'] == st.session_state['bu_forecast_selected']].copy()
-        forecast_table['ds'] = pd.to_datetime(forecast_table['ds'])
-        forecast_table['ds'] = forecast_table['ds'].dt.date
-        forecast_table['y'] = forecast_table['y'].astype(float)
-        forecast_table = forecast_table[['bu', 'ds', 'forecasted_ds', 'y', 'model']]
-        forecast_table = forecast_table.rename(
-            columns={'ds': 'Date', 'y': 'Revenue', 'bu': 'BU', 'forecasted_ds': 'Forecasted Date', 'model': 'Model'})
-        for i, model in enumerate(st.session_state['selected_models']):
-            model_table = forecast_table[forecast_table['Model'] == model].reset_index(drop=True)
-            st.markdown(f"### Model {i + 1}")
-            model_table = model_table.drop(columns=['Model'])
-            st.table(model_table
-                     # model_table.set_index("BU")
-                     .style.set_table_styles(
-                [
-                    {
-                        "selector": "thead  th",
-                        # fmt: off
-                        "props": "background-color: #2d7dce; text-align:center; color: white;font-size:0.9rem;border-bottom: 1px solid black !important;",
-                        # fmt: on
-                    },
-                    {
-                        "selector": "tbody  th",
-                        "props": "font-weight:bold;font-size:0.9rem;color:#000;",
-                    },
-                ],
-                overwrite=False,
-            )
-                     .format(precision=2)
-                     )
-
-        # st.table(
-        #     forecast_table.set_index("BU")
-        #     .style.set_table_styles(
-        #         [
-        #             {
-        #                 "selector": "thead  th",
-        #                 # fmt: off
-        #                 "props": "background-color: #2d7dce; text-align:center; color: white;font-size:0.9rem;border-bottom: 1px solid black !important;",
-        #                 # fmt: on
-        #             },
-        #             {
-        #                 "selector": "tbody  th",
-        #                 "props": "font-weight:bold;font-size:0.9rem;color:#000;",
-        #             },
-        #         ],
-        #         overwrite=False,
-        #     )
-        #     .format(precision=2)
-        # )
-        # actual_forecast_df = pd.concat([st.session_state['all_bu_dfs'], forecast_df]).reset_index(drop=True)
-        # st.session_state['actual_forecast_df'] = actual_forecast_df.copy()
-        #
-        # fig = go.Figure()
-        # if st.session_state['bu_forecast_selected'] == "Overall":
-        #     for bu in actual_forecast_df['bu'].unique():
-        #         bu_data = actual_forecast_df[actual_forecast_df['bu'] == bu]
-        #
-        #         bu_data_past = bu_data[bu_data['ds'] <= st.session_state['latest_actual_date_time']]
-        #         fig.add_trace(
-        #             go.Scatter(
-        #                 x=bu_data_past['ds'],
-        #                 y=bu_data_past['y'],
-        #                 mode='lines',
-        #                 name=f"{bu}_Actual"
-        #             )
-        #         )
-        #         bu_data_future = bu_data[bu_data['ds'] > st.session_state['latest_actual_date_time']]
-        #         fig.add_trace(
-        #             go.Scatter(
-        #                 x=bu_data_future['ds'],
-        #                 y=bu_data_future['y'],
-        #                 mode='lines',
-        #                 line=dict(dash='dot'),
-        #                 name=f"{bu}_Forecast"
-        #             )
-        #         )
-        # else:
-        #     bu_data = actual_forecast_df[actual_forecast_df['bu'] == st.session_state['bu_forecast_selected']]
-        #     bu_data_past = bu_data[bu_data['ds'] <= st.session_state['latest_actual_date_time']]
-        #     fig.add_trace(
-        #         go.Scatter(
-        #             x=bu_data_past['ds'],
-        #             y=bu_data_past['y'],
-        #             mode='lines',
-        #             name=f"{st.session_state['bu_forecast_selected']}_Actual"
-        #         )
-        #     )
-        #     bu_data_future = bu_data[bu_data['ds'] > st.session_state['latest_actual_date_time']]
-        #     fig.add_trace(
-        #         go.Scatter(
-        #             x=bu_data_future['ds'],
-        #             y=bu_data_future['y'],
-        #             mode='lines',
-        #             line=dict(dash='dot'),
-        #             name=f"{st.session_state['bu_forecast_selected']}_Forecast"
-        #         )
-        #     )
-        # fig.update_layout(
-        #     title=f'{st.session_state['bu_forecast_selected']} Business Units Forecast Graph',
-        #     xaxis_title='Date',
-        #     yaxis_title='Value',
-        #     legend_title='Business Units'
-        # )
-        #
-        # st.plotly_chart(fig)
-        #
-        # st.divider()
-        #
         # st.header('Forecast Data')
+        # ## Download forecast data
+        # download_table = forecast_df.copy()
+        # download_table['ds'] = pd.to_datetime(download_table['ds'])
+        # download_table['ds'] = download_table['ds'].dt.date
+        # download_table['y'] = download_table['y'].astype(float)
+        # download_table = download_table.rename(
+        #     columns={'ds': 'Date', 'y': 'Revenue', 'bu': 'BU', 'forecasted_ds': 'Forecasted Date', 'model': 'Model'})
+        # download_table_filename = 'future-forecast.xlsx'
+        # buffer = BytesIO()
+        # with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+        #     for i, model in enumerate(st.session_state['selected_models']):
+        #         model_table = download_table[download_table['Model'] == model].reset_index(drop=True)
+        #         model_table = model_table.drop(columns=['Model'])
+        #         model_table.to_excel(writer, index=False, sheet_name=f"Model_{i + 1}")
+        #     writer.close()
+        # st.download_button(label="Download Data", data=buffer.getvalue(), file_name=download_table_filename,
+        #                    mime="application/vnd.ms-excel", key='download_forecast_data')
+        #
+        # ## Display forecast data
         # if st.session_state['bu_forecast_selected'] == "Overall":
         #     forecast_table = st.session_state['future_forecast'].copy()
         # else:
-        #     forecast_table = bu_data_future.copy()
+        #     forecast_table = forecast_df[forecast_df['bu'] == st.session_state['bu_forecast_selected']].copy()
         # forecast_table['ds'] = pd.to_datetime(forecast_table['ds'])
         # forecast_table['ds'] = forecast_table['ds'].dt.date
         # forecast_table['y'] = forecast_table['y'].astype(float)
-        # forecast_table['forecasted_ds'] = pd.to_datetime(forecasted_date)
-        # forecast_table['forecasted_ds'] = forecast_table['forecasted_ds'].dt.date
-        #
+        # forecast_table = forecast_table[['bu', 'ds', 'forecasted_ds', 'y', 'model']]
         # forecast_table = forecast_table.rename(
-        #     columns={'ds': 'Date', 'y': 'Revenue', 'bu': 'BU', 'forecasted_ds': 'Forecasted Date'})
-        # st.table(
-        #     forecast_table.set_index("BU")
-        #     .style.set_table_styles(
+        #     columns={'ds': 'Date', 'y': 'Revenue', 'bu': 'BU', 'forecasted_ds': 'Forecasted Date', 'model': 'Model'})
+        # for i, model in enumerate(st.session_state['selected_models']):
+        #     model_table = forecast_table[forecast_table['Model'] == model].reset_index(drop=True)
+        #     st.markdown(f"### Model {i + 1}")
+        #     model_table = model_table.drop(columns=['Model'])
+        #     st.table(model_table
+        #              # model_table.set_index("BU")
+        #              .style.set_table_styles(
         #         [
         #             {
         #                 "selector": "thead  th",
@@ -776,5 +848,5 @@ with left_pane:
         #         ],
         #         overwrite=False,
         #     )
-        #     .format(precision=2)
-        # )
+        #              .format(precision=2)
+        #              )
