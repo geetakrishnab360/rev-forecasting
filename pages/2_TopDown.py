@@ -446,7 +446,7 @@ with left_pane:
 
     # if not st.session_state['is_train']:
     #     st.stop()
-    st.session_state['user'] = 'test_all_1'
+    st.session_state['user'] = 'test_all_2'
     if 'is_train' not in st.session_state:
         st.session_state['is_train'] = False
     if st.button('Train Models'):
@@ -507,7 +507,7 @@ with left_pane:
         # forecast_df = forecast_df[(forecast_df['ds'] <= pd.to_datetime(forecast_date)) & (
         #         forecast_df['ds'] > pd.to_datetime(latest_actual_date_time))]
         forecast_df['ds'] = forecast_df['ds'].dt.strftime('%Y-%m-%d %H:%M:%S')
-        forecast_df['forecasted_ds'] = forecast_df['forecasted_ds'].dt.strftime('%Y-%m-%d')
+        forecast_df['forecasted_ds'] = forecast_df['forecasted_ds'].dt.strftime('%Y-%m-%d %H:%M')
         st.session_state['future_forecast'] = forecast_df.copy()
 
         fig = go.Figure()
@@ -576,7 +576,7 @@ with left_pane:
         st.plotly_chart(fig)
         if st.button('Refresh Forecast'):
             st.session_state['fetch_forecast_data'] = fetch_forecast_data()
-            st.session_state['selected_models'] = st.session_state['fetch_forecast_data']['experiment_id'].unique().tolist()
+            st.session_state['selected_models'] = st.session_state['fetch_forecast_data']['EXPERIMENT_ID'].unique().tolist()
         st.divider()
 
         st.header('Forecast Data')

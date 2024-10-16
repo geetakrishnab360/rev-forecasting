@@ -82,8 +82,11 @@ def preprocess(
 def dsx_method(rev_data, exo_df):
     bu = 'dsx'
     dsx_df = rev_data[rev_data['business_unit'] == bu]
+    actuals_latest_date_time = rev_data.ds.max()
     final_df = dsx_df.merge(exo_df, on='ds', how='right')
-    prediction_df = pd.date_range('2024-11-01', '2025-08-01', freq='MS', name='ds').to_frame().reset_index(drop=True)
+    prediction_df = pd.date_range((actuals_latest_date_time + pd.DateOffset(months=1)).strftime("%Y-%m-%d"),
+                                  (actuals_latest_date_time + pd.DateOffset(months=12)).strftime("%Y-%m-%d"), freq='MS',
+                                  name='ds').to_frame().reset_index(drop=True)
     final_df = pd.concat((final_df, prediction_df))
     final_df = final_df[final_df.ds >= '2020-07-01']
     final_df = final_df.reset_index(drop=True)
@@ -94,7 +97,9 @@ def dsx_method(rev_data, exo_df):
         'lower_window': 0,
         'upper_window': 1
     })
-    test_dates = ['2024-04-01', '2024-06-01']
+
+    test_dates = [(actuals_latest_date_time - pd.DateOffset(months=2)).strftime("%Y-%m-%d"),
+                  (actuals_latest_date_time - pd.DateOffset(months=4)).strftime("%Y-%m-%d")]
 
     return holiday_dates, final_df, test_dates
 
@@ -103,12 +108,15 @@ def bts_method(rev_data, exo_df):
     holiday_dates = None
     bu = 'bts'
     bts_df = rev_data[rev_data['business_unit'] == bu]
-    prediction_df = pd.date_range('2024-09-01', '2025-08-01', freq='MS', name='ds').to_frame().reset_index(drop=True)
+    actuals_latest_date_time = rev_data.ds.max()
+    prediction_df = pd.date_range((actuals_latest_date_time + pd.DateOffset(months=1)).strftime("%Y-%m-%d"),
+                                  (actuals_latest_date_time + pd.DateOffset(months=12)).strftime("%Y-%m-%d"), freq='MS',
+                                  name='ds').to_frame().reset_index(drop=True)
     final_df = pd.concat((bts_df, prediction_df))
     final_df = final_df[final_df.ds >= '2021-01-01']
     final_df = final_df.reset_index(drop=True)
     start_date = '2019-01-01'
-    end_date = '2025-12-31'
+    end_date = (actuals_latest_date_time + pd.DateOffset(months=24))
     dates = pd.date_range(start=start_date, end=end_date, freq='D')
 
     # Define the US Federal Holiday Calendar
@@ -134,15 +142,19 @@ def bts_method(rev_data, exo_df):
     final_df = final_df.merge(working_days_df, on=['year', 'month'], how='left').copy()
     final_df['y_monthly'] = final_df['y']
     final_df['y'] = final_df['y_monthly'] / final_df['total_working_days']
-    test_dates = ['2024-04-01']
+    test_dates = [(actuals_latest_date_time - pd.DateOffset(months=2)).strftime("%Y-%m-%d"),
+                  (actuals_latest_date_time - pd.DateOffset(months=4)).strftime("%Y-%m-%d")]
     return holiday_dates, final_df, test_dates
 
 
 def emea_method(rev_data, exo_df):
     bu = 'emea'
-    dsx_df = rev_data[rev_data['business_unit'] == bu]
-    final_df = dsx_df.merge(exo_df, on='ds', how='right')
-    prediction_df = pd.date_range('2024-11-01', '2025-08-01', freq='MS', name='ds').to_frame().reset_index(drop=True)
+    emea_df = rev_data[rev_data['business_unit'] == bu]
+    actuals_latest_date_time = rev_data.ds.max()
+    final_df = emea_df.merge(exo_df, on='ds', how='right')
+    prediction_df = pd.date_range((actuals_latest_date_time + pd.DateOffset(months=1)).strftime("%Y-%m-%d"),
+                                  (actuals_latest_date_time + pd.DateOffset(months=12)).strftime("%Y-%m-%d"), freq='MS',
+                                  name='ds').to_frame().reset_index(drop=True)
     final_df = pd.concat((final_df, prediction_df))
     final_df = final_df[final_df.ds >= '2021-01-01']
     final_df = final_df.reset_index(drop=True)
@@ -153,68 +165,52 @@ def emea_method(rev_data, exo_df):
         'lower_window': 0,
         'upper_window': 1
     })
-    test_dates = ['2024-04-01', '2024-06-01']
+    test_dates = [(actuals_latest_date_time - pd.DateOffset(months=2)).strftime("%Y-%m-%d"),
+                  (actuals_latest_date_time - pd.DateOffset(months=4)).strftime("%Y-%m-%d")]
+
     return holiday_dates, final_df, test_dates
 
 
 def mlabs_method(rev_data, exo_df):
     bu = 'mlabs'
-    holiday_dates = None
     mlabs_df = rev_data[rev_data['business_unit'] == bu]
-    prediction_df = pd.date_range('2024-09-01', '2025-08-01', freq='MS', name='ds').to_frame().reset_index(drop=True)
-    final_df = pd.concat((mlabs_df, prediction_df))
+    actuals_latest_date_time = rev_data.ds.max()
+    final_df = mlabs_df.merge(exo_df, on='ds', how='right')
+    prediction_df = pd.date_range((actuals_latest_date_time + pd.DateOffset(months=1)).strftime("%Y-%m-%d"),
+                                  (actuals_latest_date_time + pd.DateOffset(months=12)).strftime("%Y-%m-%d"), freq='MS',
+                                  name='ds').to_frame().reset_index(drop=True)
+    final_df = pd.concat((final_df, prediction_df))
     final_df = final_df[final_df.ds >= '2022-01-01']
     final_df = final_df.reset_index(drop=True)
-    start_date = '2019-01-01'
-    end_date = '2025-12-31'
-    dates = pd.date_range(start=start_date, end=end_date, freq='D')
 
-    # Define the US Federal Holiday Calendar
-    us_cal = USFederalHolidayCalendar()
+    holiday_dates = None
 
-    # Get all the holidays between 2019 and 2025
-    holidays = us_cal.holidays(start=start_date, end=end_date)
+    test_dates = [(actuals_latest_date_time - pd.DateOffset(months=2)).strftime("%Y-%m-%d"),
+                  (actuals_latest_date_time - pd.DateOffset(months=4)).strftime("%Y-%m-%d")]
 
-    # Filter out weekends and holidays to get working days
-    business_days = dates[(dates.weekday < 5) & (~dates.isin(holidays))]
-
-    # Create a dataframe to group by year and month, counting working days
-    df = pd.DataFrame({'Date': business_days})
-    df['Year'] = df['Date'].dt.year
-    df['Month'] = df['Date'].dt.month
-    working_days_df = df.groupby(['Year', 'Month']).count().reset_index().rename(columns=
-                                                                                 {'Date': 'total_working_days',
-                                                                                  'Year': 'year',
-                                                                                  'Month': 'month'
-                                                                                  })
-    final_df['month'] = final_df.ds.dt.month
-    final_df['year'] = final_df.ds.dt.year
-    final_df = final_df.merge(working_days_df, on=['year', 'month'], how='left').copy()
-    test_dates = ['2024-05-01', '2024-06-01']
     return holiday_dates, final_df, test_dates
 
 
 def fpai_method(rev_data, exo_df):
     bu = 'fpai'
     fpai_df = rev_data[rev_data['business_unit'] == bu]
+    actuals_latest_date_time = rev_data.ds.max()
     final_df = fpai_df.merge(exo_df, on='ds', how='right')
-    prediction_df = pd.date_range('2024-09-01', '2025-08-01', freq='MS', name='ds').to_frame().reset_index(drop=True)
+    prediction_df = pd.date_range((actuals_latest_date_time + pd.DateOffset(months=1)).strftime("%Y-%m-%d"),
+                                  (actuals_latest_date_time + pd.DateOffset(months=12)).strftime("%Y-%m-%d"), freq='MS',
+                                  name='ds').to_frame().reset_index(drop=True)
     final_df = pd.concat((final_df, prediction_df))
     final_df = final_df[final_df.ds >= '2023-01-01']
     final_df = final_df.reset_index(drop=True)
     start_date = '2019-01-01'
-    end_date = '2025-12-31'
+    end_date = (actuals_latest_date_time + pd.DateOffset(months=24))
     dates = pd.date_range(start=start_date, end=end_date, freq='D')
-
     # Define the US Federal Holiday Calendar
     us_cal = USFederalHolidayCalendar()
-
     # Get all the holidays between 2019 and 2025
     holidays = us_cal.holidays(start=start_date, end=end_date)
-
     # Filter out weekends and holidays to get working days
     business_days = dates[(dates.weekday < 5) & (~dates.isin(holidays))]
-
     # Create a dataframe to group by year and month, counting working days
     df = pd.DataFrame({'Date': business_days})
     df['Year'] = df['Date'].dt.year
@@ -227,13 +223,16 @@ def fpai_method(rev_data, exo_df):
     final_df['month'] = final_df.ds.dt.month
     final_df['year'] = final_df.ds.dt.year
     final_df = final_df.merge(working_days_df, on=['year', 'month'], how='left').copy()
-    test_dates = ['2024-06-01']
     holiday_dates = pd.DataFrame({
         'holiday': ['NA'] * 3,
         'ds': pd.to_datetime(['2024-01-01', '2024-02-01', '2024-03-01']),
         'lower_window': 0,
         'upper_window': 1
     })
+
+    test_dates = [(actuals_latest_date_time - pd.DateOffset(months=2)).strftime("%Y-%m-%d"),
+                  (actuals_latest_date_time - pd.DateOffset(months=4)).strftime("%Y-%m-%d")]
+
     return holiday_dates, final_df, test_dates
 
 
@@ -529,6 +528,7 @@ def lambda_handler(event, context):
     exo_df = create_exo_df_()
     rev_data = fetch_revenue_data_from_db()
     rev_data = preprocess(rev_data)
+    latest_actual_bu_date_time = rev_data[rev_data['business_unit'] == bu].ds.max()
     holiday_dates, final_df, test_dates = {
         'dsx': dsx_method,
         'bts': bts_method,
@@ -538,19 +538,23 @@ def lambda_handler(event, context):
 
     ## TRAINING
     growth = 'linear'
+    features = []
     if bu == 'fpai':
         growth = 'flat'
-    results = fit_model(final_df,
-                        [pd.to_datetime(d) for d in test_dates],
-                        pd.to_datetime('2024-09-01'),
+        features = ['year']
+    results = fit_model(data=final_df,
+                        testing_dates=test_dates,
+                        prediction_date=latest_actual_bu_date_time + pd.DateOffset(months=1),
                         hyperparemeter_space=range(1, 15),
                         events=holiday_dates,
+                        feature_space=[features],
                         growth=growth)
     results = analyze_results(results).reset_index(drop=True)
     best_model_dict = results.iloc[0].to_dict()
     res_dict = {'BU': bu, 'request_id': request_id, 'results': best_model_dict}
     print(res_dict)
     print(best_model_dict)
+    best_model_dict['features'] = str(best_model_dict['features'])
     update_experiments_data_to_db(request_id,
                                   bu)
     insert_model_results_to_db(user,
@@ -561,10 +565,8 @@ def lambda_handler(event, context):
 
     ## Future Predictions
     print("Starting Future Predictions")
-    test_date = pd.to_datetime('2024-06-01')
-    prediction_date = pd.to_datetime('2024-09-01')
-    prediction_df = pd.date_range('2025-09-01', '2025-12-01', freq='MS', name='ds').to_frame().reset_index(drop=True)
-    final_df = pd.concat((final_df, prediction_df))
+    test_date = latest_actual_bu_date_time - pd.DateOffset(months=2)
+    prediction_date = latest_actual_bu_date_time + pd.DateOffset(months=1)
 
     data = final_df.copy()
     data = data.reset_index(drop=True)
@@ -581,27 +583,7 @@ def lambda_handler(event, context):
     print("Future Predictions completed")
     future_res = future_pred[['ds', 'yhat']]
     if bu == 'bts':
-        start_date = '2019-01-01'
-        end_date = '2025-12-31'
-        dates = pd.date_range(start=start_date, end=end_date, freq='D')
-        # Define the US Federal Holiday Calendar
-        us_cal = USFederalHolidayCalendar()
-        # Get all the holidays between 2019 and 2025
-        holidays = us_cal.holidays(start=start_date, end=end_date)
-        # Filter out weekends and holidays to get working days
-        business_days = dates[(dates.weekday < 5) & (~dates.isin(holidays))]
-        # Create a dataframe to group by year and month, counting working days
-        df = pd.DataFrame({'Date': business_days})
-        df['Year'] = df['Date'].dt.year
-        df['Month'] = df['Date'].dt.month
-        working_days_df = df.groupby(['Year', 'Month']).count().reset_index().rename(columns=
-                                                                                     {'Date': 'total_working_dayss',
-                                                                                      'Year': 'year',
-                                                                                      'Month': 'month'
-                                                                                      })
-        future = future.merge(working_days_df, left_on=[future.ds.dt.year, future.ds.dt.month],
-                              right_on=['year', 'month'], how='left')
-        future_res['yhat'] = future_res['yhat'] * future['total_working_dayss']
+        future_res['yhat'] = future_res['yhat'] * future['total_working_days']
 
     future_res.rename(columns={'yhat': 'y'}, inplace=True)
     forecast_date = datetime.now().astimezone(pytz.timezone('GMT'))
