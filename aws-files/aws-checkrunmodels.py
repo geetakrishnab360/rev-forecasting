@@ -303,15 +303,15 @@ def insert_model_results_to_db(user, request_id, bu, dictionary):
         ('{request_id}', 
         '{bu}', 
         '{user}', 
-        '{dictionary['features']}', 
-        '{dictionary['yo']}',
-        '{dictionary['final_score']}', 
-        '{dictionary['avg_train_mape']}', 
-        '{dictionary['avg_train_mape_dev']}',
-        '{dictionary['avg_train_contribution_dev']}', 
-        '{dictionary['avg_test_mape']}', 
-        '{dictionary['avg_test_mape_dev']}',
-        '{dictionary['avg_growth_error']}')
+        '{",".join(dictionary['features'])}', 
+        {dictionary['yo']},
+        {dictionary['final_score']}, 
+        {dictionary['avg_train_mape']}, 
+        {dictionary['avg_train_mape_dev']},
+        {dictionary['avg_train_contribution_dev']}, 
+        {dictionary['avg_test_mape']}, 
+        {dictionary['avg_test_mape_dev']},
+        {dictionary['avg_growth_error']})
         """
         cur.execute(sql_query)
         conn.commit()
@@ -554,7 +554,6 @@ def lambda_handler(event, context):
     res_dict = {'BU': bu, 'request_id': request_id, 'results': best_model_dict}
     print(res_dict)
     print(best_model_dict)
-    best_model_dict['features'] = str(best_model_dict['features'])
     update_experiments_data_to_db(request_id,
                                   bu)
     insert_model_results_to_db(user,
