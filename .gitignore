@@ -1,5 +1,5 @@
-/actualscomp.ipynb
-/change-actuals.ipynb
+/notebooks/actualscomp.ipynb
+/notebooks/change-actuals.ipynb
 /data/6monthssd.csv
 /data/forecast_data.xlsx
 /mlruns
@@ -8,4 +8,3 @@
 /data/2024 OA Revenue Detail.xlsx
 /model-aws/
 /notebooks/
-/checkrunmodels_.py

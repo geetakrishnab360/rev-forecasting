@@ -56,17 +56,11 @@ LAMBDA_FUNCTION_NAME = 'test-revforecasting1'
 
 def invoke_lambda(user,
                   model_name,
-                  holiday_dates_dict,
                   bu,
-                  final_df_dict,
-                  test_dates,
                   request_id):
     payload = {'user': user,
                'model_name': model_name,
-               'holiday_dates_dict': holiday_dates_dict,
                'bu': bu,
-               'final_df_dict': final_df_dict,
-               'test_dates': test_dates,
                'request_id': request_id}
     response = lambda_client.invoke(
         FunctionName=LAMBDA_FUNCTION_NAME,
@@ -76,227 +70,14 @@ def invoke_lambda(user,
     return request_id
 
 
-model = Prophet()
-logger = logging.getLogger('cmdstanpy')
-logger.setLevel(logging.ERROR)
-
-exo_df = create_exo_df_()
-st.session_state['exo_df_'] = exo_df.copy()
-rev_data = fetch_revenue_data_from_db()
-rev_data = preprocess(rev_data)
-st.session_state['rev_data'] = rev_data.copy()
-
-
-def dsx_method(rev_data, exo_df):
-    bu = 'dsx'
-    dsx_df = rev_data[rev_data['business_unit'] == bu]
-    final_df = dsx_df.merge(exo_df, on='ds', how='right')
-    prediction_df = pd.date_range('2024-11-01', '2025-08-01', freq='MS', name='ds').to_frame().reset_index(drop=True)
-    final_df = pd.concat((final_df, prediction_df))
-    final_df = final_df[final_df.ds >= '2020-07-01']
-    final_df = final_df.reset_index(drop=True)
-
-    holiday_dates = pd.DataFrame({
-        'holiday': ['NA'] * 3,
-        'ds': pd.to_datetime(['2024-01-01', '2024-02-01', '2024-03-01']),
-        'lower_window': 0,
-        'upper_window': 1
-    })
-    test_dates = ['2024-04-01', '2024-06-01']
-
-    return holiday_dates, final_df, test_dates
-
-
-def bts_method(rev_data,exo_df):
-    holiday_dates = None
-    bu = 'bts'
-    bts_df = rev_data[rev_data['business_unit'] == bu]
-    prediction_df = pd.date_range('2024-09-01', '2025-08-01', freq='MS', name='ds').to_frame().reset_index(drop=True)
-    final_df = pd.concat((bts_df, prediction_df))
-    final_df = final_df[final_df.ds >= '2021-01-01']
-    final_df = final_df.reset_index(drop=True)
-    start_date = '2019-01-01'
-    end_date = '2025-12-31'
-    dates = pd.date_range(start=start_date, end=end_date, freq='D')
-
-    # Define the US Federal Holiday Calendar
-    us_cal = USFederalHolidayCalendar()
-
-    # Get all the holidays between 2019 and 2025
-    holidays = us_cal.holidays(start=start_date, end=end_date)
-
-    # Filter out weekends and holidays to get working days
-    business_days = dates[(dates.weekday < 5) & (~dates.isin(holidays))]
-
-    # Create a dataframe to group by year and month, counting working days
-    df = pd.DataFrame({'Date': business_days})
-    df['Year'] = df['Date'].dt.year
-    df['Month'] = df['Date'].dt.month
-    working_days_df = df.groupby(['Year', 'Month']).count().reset_index().rename(columns=
-                                                                                 {'Date': 'total_working_days',
-                                                                                  'Year': 'year',
-                                                                                  'Month': 'month'
-                                                                                  })
-    final_df['month'] = final_df.ds.dt.month
-    final_df['year'] = final_df.ds.dt.year
-    final_df = final_df.merge(working_days_df, on=['year', 'month'], how='left').copy()
-    final_df['y_monthly'] = final_df['y']
-    final_df['y'] = final_df['y_monthly'] / final_df['total_working_days']
-    test_dates = ['2024-04-01']
-    return holiday_dates, final_df, test_dates
-
-
-def emea_method(rev_data,exo_df):
-    bu = 'emea'
-    dsx_df = rev_data[rev_data['business_unit'] == bu]
-    final_df = dsx_df.merge(exo_df, on='ds', how='right')
-    prediction_df = pd.date_range('2024-11-01', '2025-08-01', freq='MS', name='ds').to_frame().reset_index(drop=True)
-    final_df = pd.concat((final_df, prediction_df))
-    final_df = final_df[final_df.ds >= '2021-01-01']
-    final_df = final_df.reset_index(drop=True)
-
-    holiday_dates = pd.DataFrame({
-        'holiday': ['NA'],
-        'ds': pd.to_datetime(['2021-12-01']),
-        'lower_window': 0,
-        'upper_window': 1
-    })
-    test_dates = ['2024-04-01', '2024-06-01']
-    return holiday_dates, final_df, test_dates
-
-
-def mlabs_method(rev_data,exo_df):
-    bu = 'mlabs'
-    holiday_dates = None
-    mlabs_df = rev_data[rev_data['business_unit'] == bu]
-    prediction_df = pd.date_range('2024-09-01', '2025-08-01', freq='MS', name='ds').to_frame().reset_index(drop=True)
-    final_df = pd.concat((mlabs_df, prediction_df))
-    final_df = final_df[final_df.ds >= '2022-01-01']
-    final_df = final_df.reset_index(drop=True)
-    start_date = '2019-01-01'
-    end_date = '2025-12-31'
-    dates = pd.date_range(start=start_date, end=end_date, freq='D')
-
-    # Define the US Federal Holiday Calendar
-    us_cal = USFederalHolidayCalendar()
-
-    # Get all the holidays between 2019 and 2025
-    holidays = us_cal.holidays(start=start_date, end=end_date)
-
-    # Filter out weekends and holidays to get working days
-    business_days = dates[(dates.weekday < 5) & (~dates.isin(holidays))]
-
-    # Create a dataframe to group by year and month, counting working days
-    df = pd.DataFrame({'Date': business_days})
-    df['Year'] = df['Date'].dt.year
-    df['Month'] = df['Date'].dt.month
-    working_days_df = df.groupby(['Year', 'Month']).count().reset_index().rename(columns=
-                                                                                 {'Date': 'total_working_days',
-                                                                                  'Year': 'year',
-                                                                                  'Month': 'month'
-                                                                                  })
-    final_df['month'] = final_df.ds.dt.month
-    final_df['year'] = final_df.ds.dt.year
-    final_df = final_df.merge(working_days_df, on=['year', 'month'], how='left').copy()
-    test_dates = ['2024-05-01', '2024-06-01']
-    return holiday_dates, final_df, test_dates
-
-
-def fpai_method(rev_data,exo_df):
-    bu = 'fpai'
-    fpai_df = rev_data[rev_data['business_unit'] == bu]
-    final_df = fpai_df.merge(exo_df, on='ds', how='right')
-    prediction_df = pd.date_range('2024-09-01', '2025-08-01', freq='MS', name='ds').to_frame().reset_index(drop=True)
-    final_df = pd.concat((final_df, prediction_df))
-    final_df = final_df[final_df.ds >= '2023-01-01']
-    final_df = final_df.reset_index(drop=True)
-    start_date = '2019-01-01'
-    end_date = '2025-12-31'
-    dates = pd.date_range(start=start_date, end=end_date, freq='D')
-
-    # Define the US Federal Holiday Calendar
-    us_cal = USFederalHolidayCalendar()
-
-    # Get all the holidays between 2019 and 2025
-    holidays = us_cal.holidays(start=start_date, end=end_date)
-
-    # Filter out weekends and holidays to get working days
-    business_days = dates[(dates.weekday < 5) & (~dates.isin(holidays))]
-
-    # Create a dataframe to group by year and month, counting working days
-    df = pd.DataFrame({'Date': business_days})
-    df['Year'] = df['Date'].dt.year
-    df['Month'] = df['Date'].dt.month
-    working_days_df = df.groupby(['Year', 'Month']).count().reset_index().rename(columns=
-                                                                                 {'Date': 'total_working_days',
-                                                                                  'Year': 'year',
-                                                                                  'Month': 'month'
-                                                                                  })
-    final_df['month'] = final_df.ds.dt.month
-    final_df['year'] = final_df.ds.dt.year
-    final_df = final_df.merge(working_days_df, on=['year', 'month'], how='left').copy()
-    test_dates = ['2024-06-01']
-    holiday_dates = pd.DataFrame({
-        'holiday': ['NA'] * 3,
-        'ds': pd.to_datetime(['2024-01-01', '2024-02-01', '2024-03-01']),
-        'lower_window': 0,
-        'upper_window': 1
-    })
-    return holiday_dates, final_df, test_dates
-
-
-def main(user):
+def train_models(user):
     bus = ['dsx', 'bts', 'emea', 'mlabs', 'fpai']
-    # bus = ['bts']
     uniq_id = str(uuid.uuid4())
-    request_ids = [uniq_id for _ in range(len(bus))]
-    model_info_dict = {}
     for bu in bus:
-        model_info_dict[bu] = {
-            'experiment_id': request_ids[bus.index(bu)],
-            'business_unit': bu,
-            'start_date': datetime.now().astimezone(pytz.timezone('GMT')),
-            'status': 'initiated',
-            'user': user,
-            'failure_reason': None
-        }
-        if bu == 'dsx':
-            holiday_dates, final_df, test_dates = dsx_method(st.session_state['rev_data'], st.session_state['exo_df_'])
-            holiday_dates['ds'] = holiday_dates['ds'].dt.strftime('%Y-%m-%d')
-            holiday_dates_dict = holiday_dates.to_dict()
-            final_df['ds'] = final_df['ds'].dt.strftime('%Y-%m-%d')
-            final_df_dict = final_df.to_dict()
-        elif bu == 'bts':
-            holiday_dates, final_df, test_dates = bts_method(st.session_state['rev_data'], st.session_state['exo_df_'])
-            holiday_dates_dict = {}
-            final_df['ds'] = final_df['ds'].dt.strftime('%Y-%m-%d')
-            final_df_dict = final_df.to_dict()
-        elif bu == 'emea':
-            holiday_dates, final_df, test_dates = emea_method(st.session_state['rev_data'], st.session_state['exo_df_'])
-            holiday_dates['ds'] = holiday_dates['ds'].dt.strftime('%Y-%m-%d')
-            holiday_dates_dict = holiday_dates.to_dict()
-            final_df['ds'] = final_df['ds'].dt.strftime('%Y-%m-%d')
-            final_df_dict = final_df.to_dict()
-        elif bu == 'mlabs':
-            holiday_dates, final_df, test_dates = mlabs_method(st.session_state['rev_data'], st.session_state['exo_df_'])
-            holiday_dates_dict = {}
-            final_df['ds'] = final_df['ds'].dt.strftime('%Y-%m-%d')
-            final_df_dict = final_df.to_dict()
-        elif bu == 'fpai':
-            holiday_dates, final_df, test_dates = fpai_method(st.session_state['rev_data'], st.session_state['exo_df_'])
-            holiday_dates['ds'] = holiday_dates['ds'].dt.strftime('%Y-%m-%d')
-            holiday_dates_dict = holiday_dates.to_dict()
-            final_df['ds'] = final_df['ds'].dt.strftime('%Y-%m-%d')
-            final_df_dict = final_df.to_dict()
-
-        insert_experiments_data_to_db(model_info_dict[bu])
         req_id = invoke_lambda(user=user,
                                model_name=f'Prophet_{bu}',
-                               holiday_dates_dict=holiday_dates_dict,
                                bu=bu,
-                               final_df_dict=final_df_dict,
-                               test_dates=test_dates,
-                               request_id=request_ids[bus.index(bu)])
+                               request_id=uniq_id)
         print(f"Lambda invocation triggered successfully for {bu} with request ID: {req_id}")
     return uniq_id
 
@@ -363,7 +144,7 @@ latest_actual_date = datet.datetime.strptime(latest_actual_date_time,
                                              "%Y-%m-%d %H:%M:%S").date() + relativedelta(months=+1)
 st.session_state['latest_actual_date'] = latest_actual_date
 
-left_pane,_ = st.columns([8, 1])
+left_pane, _ = st.columns([8, 1])
 with left_pane:
     with st.expander('Data Inputs', expanded=False):
         if 'edit_bu' not in st.session_state:
@@ -663,15 +444,15 @@ with left_pane:
 
             st.plotly_chart(fig)
 
-        st.session_state['user'] = 'test_all'
-        if 'is_train' not in st.session_state:
-            st.session_state['is_train'] = False
-        if st.button('Train Models'):
-            st.session_state['experiment_id'] = main(st.session_state['user'])
-            st.session_state['is_train'] = True
-
     # if not st.session_state['is_train']:
     #     st.stop()
+    st.session_state['user'] = 'test_all_1'
+    if 'is_train' not in st.session_state:
+        st.session_state['is_train'] = False
+    if st.button('Train Models'):
+        st.session_state['experiment_id'] = train_models(st.session_state['user'])
+        st.session_state['is_train'] = True
+
     with st.expander('Future Forecasts', expanded=True):
         if 'fetch_forecast_data' not in st.session_state:
             st.session_state['fetch_forecast_data'] = fetch_forecast_data()
@@ -795,58 +576,59 @@ with left_pane:
         st.plotly_chart(fig)
         if st.button('Refresh Forecast'):
             st.session_state['fetch_forecast_data'] = fetch_forecast_data()
+            st.session_state['selected_models'] = st.session_state['fetch_forecast_data']['experiment_id'].unique().tolist()
         st.divider()
 
-        # st.header('Forecast Data')
-        # ## Download forecast data
-        # download_table = forecast_df.copy()
-        # download_table['ds'] = pd.to_datetime(download_table['ds'])
-        # download_table['ds'] = download_table['ds'].dt.date
-        # download_table['y'] = download_table['y'].astype(float)
-        # download_table = download_table.rename(
-        #     columns={'ds': 'Date', 'y': 'Revenue', 'bu': 'BU', 'forecasted_ds': 'Forecasted Date', 'model': 'Model'})
-        # download_table_filename = 'future-forecast.xlsx'
-        # buffer = BytesIO()
-        # with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-        #     for i, model in enumerate(st.session_state['selected_models']):
-        #         model_table = download_table[download_table['Model'] == model].reset_index(drop=True)
-        #         model_table = model_table.drop(columns=['Model'])
-        #         model_table.to_excel(writer, index=False, sheet_name=f"Model_{i + 1}")
-        #     writer.close()
-        # st.download_button(label="Download Data", data=buffer.getvalue(), file_name=download_table_filename,
-        #                    mime="application/vnd.ms-excel", key='download_forecast_data')
-        #
-        # ## Display forecast data
-        # if st.session_state['bu_forecast_selected'] == "Overall":
-        #     forecast_table = st.session_state['future_forecast'].copy()
-        # else:
-        #     forecast_table = forecast_df[forecast_df['bu'] == st.session_state['bu_forecast_selected']].copy()
-        # forecast_table['ds'] = pd.to_datetime(forecast_table['ds'])
-        # forecast_table['ds'] = forecast_table['ds'].dt.date
-        # forecast_table['y'] = forecast_table['y'].astype(float)
-        # forecast_table = forecast_table[['bu', 'ds', 'forecasted_ds', 'y', 'model']]
-        # forecast_table = forecast_table.rename(
-        #     columns={'ds': 'Date', 'y': 'Revenue', 'bu': 'BU', 'forecasted_ds': 'Forecasted Date', 'model': 'Model'})
-        # for i, model in enumerate(st.session_state['selected_models']):
-        #     model_table = forecast_table[forecast_table['Model'] == model].reset_index(drop=True)
-        #     st.markdown(f"### Model {i + 1}")
-        #     model_table = model_table.drop(columns=['Model'])
-        #     st.table(model_table
-        #              # model_table.set_index("BU")
-        #              .style.set_table_styles(
-        #         [
-        #             {
-        #                 "selector": "thead  th",
-        #                 # fmt: off
-        #                 "props": "background-color: #2d7dce; text-align:center; color: white;font-size:0.9rem;border-bottom: 1px solid black !important;",
-        #                 # fmt: on
-        #             },
-        #             {
-        #                 "selector": "tbody  th",
-        #                 "props": "font-weight:bold;font-size:0.9rem;color:#000;",
-        #             },
-        #         ],
-        #         overwrite=False,
-        #     )
-        #              .format(precision=2)
-        #              )
+        st.header('Forecast Data')
+        ## Download forecast data
+        download_table = forecast_df.copy()
+        download_table['ds'] = pd.to_datetime(download_table['ds'])
+        download_table['ds'] = download_table['ds'].dt.date
+        download_table['y'] = download_table['y'].astype(float)
+        download_table = download_table.rename(
+            columns={'ds': 'Date', 'y': 'Revenue', 'bu': 'Business Unit', 'forecasted_ds': 'Forecasted Date',
+                     'model': 'Model', 'experiment_id': 'Experiment ID'})
+        download_table = download_table[
+            ['Business Unit', 'Date', 'Forecasted Date', 'Revenue', 'Model', 'Experiment ID']]
+        download_table_filename = 'future-forecast.xlsx'
+        buffer = BytesIO()
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            for i, model in enumerate(st.session_state['selected_models']):
+                model_table = download_table[download_table['Experiment ID'] == model].reset_index(drop=True)
+                model_table = model_table.drop(columns=['Model', 'Experiment ID'])
+                model_table.to_excel(writer, index=False, sheet_name=f"Model_{i + 1}")
+            writer.close()
+        st.download_button(label="Download Data", data=buffer.getvalue(), file_name=download_table_filename,
+                           mime="application/vnd.ms-excel", key='download_forecast_data')
+
+        ## Display forecast data
+        if st.session_state['bu_forecast_selected'] == "Overall":
+            forecast_table = download_table.copy()
+        else:
+            forecast_table = download_table[
+                download_table['Business Unit'] == st.session_state['bu_forecast_selected']].copy()
+        forecast_table['Business Unit'] = forecast_table['Business Unit'].str.upper()
+        for i, model in enumerate(st.session_state['selected_models']):
+            model_table = forecast_table[forecast_table['Experiment ID'] == model].reset_index(drop=True)
+            st.markdown(f"### Model {i + 1}")
+            model_table = model_table.drop(columns=['Model', 'Experiment ID'])
+            st.table(
+                # model_table
+                model_table.set_index("Business Unit")
+                .style.set_table_styles(
+                    [
+                        {
+                            "selector": "thead  th",
+                            # fmt: off
+                            "props": "background-color: #2d7dce; text-align:center; color: white;font-size:0.9rem;border-bottom: 1px solid black !important;",
+                            # fmt: on
+                        },
+                        {
+                            "selector": "tbody  th",
+                            "props": "font-weight:bold;font-size:0.9rem;color:#000;",
+                        },
+                    ],
+                    overwrite=False,
+                )
+                .format(precision=2)
+            )
