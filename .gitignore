@@ -1,10 +1,7 @@
-/notebooks/actualscomp.ipynb
-/notebooks/change-actuals.ipynb
 /data/6monthssd.csv
-/data/forecast_data.xlsx
-/mlruns
-/lambda-test
-/prophet-docker
 /data/2024 OA Revenue Detail.xlsx
+/data/forecast_data.xlsx
+/lambda-test
 /model-aws/
 /notebooks/
+/notebooks_/

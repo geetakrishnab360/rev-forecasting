@@ -82,14 +82,14 @@ def preprocess(
 def dsx_method(rev_data, exo_df):
     bu = 'dsx'
     dsx_df = rev_data[rev_data['business_unit'] == bu]
-    actuals_latest_date_time = rev_data.ds.max()
-    final_df = dsx_df.merge(exo_df, on='ds', how='right')
+    actuals_latest_date_time = dsx_df.ds.max()
     prediction_df = pd.date_range((actuals_latest_date_time + pd.DateOffset(months=1)).strftime("%Y-%m-%d"),
                                   (actuals_latest_date_time + pd.DateOffset(months=12)).strftime("%Y-%m-%d"), freq='MS',
                                   name='ds').to_frame().reset_index(drop=True)
-    final_df = pd.concat((final_df, prediction_df))
+    final_df = pd.concat((dsx_df, prediction_df))
     final_df = final_df[final_df.ds >= '2020-07-01']
     final_df = final_df.reset_index(drop=True)
+    final_df = final_df.merge(exo_df, on='ds', how='left')
 
     holiday_dates = pd.DataFrame({
         'holiday': ['NA'] * 3,
@@ -108,7 +108,7 @@ def bts_method(rev_data, exo_df):
     holiday_dates = None
     bu = 'bts'
     bts_df = rev_data[rev_data['business_unit'] == bu]
-    actuals_latest_date_time = rev_data.ds.max()
+    actuals_latest_date_time = bts_df.ds.max()
     prediction_df = pd.date_range((actuals_latest_date_time + pd.DateOffset(months=1)).strftime("%Y-%m-%d"),
                                   (actuals_latest_date_time + pd.DateOffset(months=12)).strftime("%Y-%m-%d"), freq='MS',
                                   name='ds').to_frame().reset_index(drop=True)
@@ -150,14 +150,14 @@ def bts_method(rev_data, exo_df):
 def emea_method(rev_data, exo_df):
     bu = 'emea'
     emea_df = rev_data[rev_data['business_unit'] == bu]
-    actuals_latest_date_time = rev_data.ds.max()
-    final_df = emea_df.merge(exo_df, on='ds', how='right')
+    actuals_latest_date_time = emea_df.ds.max()
     prediction_df = pd.date_range((actuals_latest_date_time + pd.DateOffset(months=1)).strftime("%Y-%m-%d"),
                                   (actuals_latest_date_time + pd.DateOffset(months=12)).strftime("%Y-%m-%d"), freq='MS',
                                   name='ds').to_frame().reset_index(drop=True)
-    final_df = pd.concat((final_df, prediction_df))
+    final_df = pd.concat((emea_df, prediction_df))
     final_df = final_df[final_df.ds >= '2021-01-01']
     final_df = final_df.reset_index(drop=True)
+    final_df = final_df.merge(exo_df, on='ds', how='left')
 
     holiday_dates = pd.DataFrame({
         'holiday': ['NA'],
@@ -174,14 +174,14 @@ def emea_method(rev_data, exo_df):
 def mlabs_method(rev_data, exo_df):
     bu = 'mlabs'
     mlabs_df = rev_data[rev_data['business_unit'] == bu]
-    actuals_latest_date_time = rev_data.ds.max()
-    final_df = mlabs_df.merge(exo_df, on='ds', how='right')
+    actuals_latest_date_time = mlabs_df.ds.max()
     prediction_df = pd.date_range((actuals_latest_date_time + pd.DateOffset(months=1)).strftime("%Y-%m-%d"),
                                   (actuals_latest_date_time + pd.DateOffset(months=12)).strftime("%Y-%m-%d"), freq='MS',
                                   name='ds').to_frame().reset_index(drop=True)
-    final_df = pd.concat((final_df, prediction_df))
+    final_df = pd.concat((mlabs_df, prediction_df))
     final_df = final_df[final_df.ds >= '2022-01-01']
     final_df = final_df.reset_index(drop=True)
+    final_df = final_df.merge(exo_df, on='ds', how='left')
 
     holiday_dates = None
 
@@ -194,14 +194,34 @@ def mlabs_method(rev_data, exo_df):
 def fpai_method(rev_data, exo_df):
     bu = 'fpai'
     fpai_df = rev_data[rev_data['business_unit'] == bu]
-    actuals_latest_date_time = rev_data.ds.max()
-    final_df = fpai_df.merge(exo_df, on='ds', how='right')
+    actuals_latest_date_time = fpai_df.ds.max()
     prediction_df = pd.date_range((actuals_latest_date_time + pd.DateOffset(months=1)).strftime("%Y-%m-%d"),
                                   (actuals_latest_date_time + pd.DateOffset(months=12)).strftime("%Y-%m-%d"), freq='MS',
                                   name='ds').to_frame().reset_index(drop=True)
-    final_df = pd.concat((final_df, prediction_df))
+    final_df = pd.concat((fpai_df, prediction_df))
     final_df = final_df[final_df.ds >= '2023-01-01']
     final_df = final_df.reset_index(drop=True)
+    final_df = final_df.merge(exo_df, on='ds', how='left')
+    # bu = 'fpai'
+    # fpai_df = rev_data[rev_data['business_unit'] == bu]
+    # actuals_latest_date_time = rev_data.ds.max()
+    # final_df = fpai_df.merge(exo_df, on='ds', how='right')
+    # prediction_df = pd.date_range((actuals_latest_date_time + pd.DateOffset(months=1)).strftime("%Y-%m-%d"),
+    #                               (actuals_latest_date_time + pd.DateOffset(months=12)).strftime("%Y-%m-%d"), freq='MS',
+    #                               name='ds').to_frame().reset_index(drop=True)
+    # final_df = pd.concat((final_df, prediction_df))
+    # final_df = final_df[final_df.ds >= '2023-01-01']
+    # final_df = final_df.reset_index(drop=True)
+    # bu = 'fpai'
+    # fpai_df = rev_data[rev_data['business_unit'] == bu]
+    # actuals_latest_date_time = fpai_df.ds.max()
+    # prediction_df = pd.date_range((actuals_latest_date_time + pd.DateOffset(months=1)).strftime("%Y-%m-%d"),
+    #                               (actuals_latest_date_time + pd.DateOffset(months=12)).strftime("%Y-%m-%d"), freq='MS',
+    #                               name='ds').to_frame().reset_index(drop=True)
+    # final_df = pd.concat((fpai_df, prediction_df))
+    # final_df = final_df.reset_index(drop=True)
+    # final_df = final_df[final_df.ds >= '2023-01-01']
+    # final_df = final_df.merge(exo_df, on='ds', how='left')
     start_date = '2019-01-01'
     end_date = (actuals_latest_date_time + pd.DateOffset(months=24))
     dates = pd.date_range(start=start_date, end=end_date, freq='D')
@@ -241,20 +261,14 @@ def insert_experiments_data_to_db(dictionary):
         conn = create_snowflake_connection()
         cur = conn.cursor()
         sql_query = f"""
-        INSERT INTO DSX_DASHBOARDS_SANDBOX.FORECASTING_TOOL.EXPERIEMENTS
-        (EXPERIMENT_ID, 
-        BUSINESS_UNIT, 
-        START_DATE, 
-        STATUS, 
-        USER, 
-        FAILURE_REASON)
-        VALUES
+        INSERT INTO DSX_DASHBOARDS_SANDBOX.FORECASTING_TOOL.EXPERIEMENTS VALUES
         ('{dictionary['experiment_id']}',
         '{dictionary['business_unit']}', 
-        '{dictionary['start_date']}', 
+        '{dictionary['start_date']}',
+         NULL, 
         '{dictionary['status']}', 
         '{dictionary['user']}', 
-        '{dictionary['failure_reason']}')
+        NULL)
         """
         cur.execute(sql_query)
         conn.commit()
@@ -286,20 +300,7 @@ def insert_model_results_to_db(user, request_id, bu, dictionary):
         conn = create_snowflake_connection()
         cur = conn.cursor()
         sql_query = f"""
-        INSERT INTO DSX_DASHBOARDS_SANDBOX.FORECASTING_TOOL.MODEL_METRICS
-        (EXPERIMENT_ID, 
-        BUSINESS_UNIT, 
-        USER, 
-        FEATURES, 
-        HYPERPARAMETERS, 
-        FINAL_SCORE, 
-        AVG_TRAIN_MAPE, 
-        AVG_TRAIN_MAPE_DEV,
-        AVG_TRAIN_CONTRIBUTION_DEV,
-        AVG_TEST_MAPE,
-        AVG_TEST_MAPE_DEV,
-        AVG_GROWTH_ERROR)
-        VALUES
+        INSERT INTO DSX_DASHBOARDS_SANDBOX.FORECASTING_TOOL.MODEL_METRICS VALUES
         ('{request_id}', 
         '{bu}', 
         '{user}', 
@@ -400,21 +401,9 @@ def calculate_metrics(act, pred):
     return mape, mape_std, feature_contributions, contribution_std
 
 
-def analyze_results(result_df):
-    result_df['train_score'] = (
-            (result_df['avg_train_mape'] / result_df['avg_test_mape'] > 10) & result_df['avg_train_mape'] >= 5).map(
-        {True: 10, False: 0})
-    for col in ['avg_test_mape', 'avg_test_mape_dev', 'avg_growth_error']:
-        power = np.ceil(np.log(result_df[col].quantile(0.25)) / np.log(10))
-        result_df[f'{col}_standardized'] = result_df[col] / 10 ** power
-    result_df['final_score'] = result_df['train_score'] + result_df['avg_train_contribution_dev'] + \
-                               result_df['avg_test_mape_standardized']
-    columns = result_df.drop('final_score', axis=1).columns
-    return result_df[['final_score', *columns]].sort_values(by='final_score')
-
-
-def fit_model(data, testing_dates, prediction_date, feature_space=[[]], hyperparemeter_space=[], growth='linear',
-              events=None):
+def fit_model_dsx_emea(data, testing_dates, prediction_date, feature_space=[[]], hyperparemeter_space=[],
+                       growth='linear',
+                       events=None):
     results = []
     for features in feature_space:
         for yo in hyperparemeter_space:
@@ -509,8 +498,238 @@ def fit_model(data, testing_dates, prediction_date, feature_space=[[]], hyperpar
     return pd.DataFrame(results)
 
 
+def fit_model_bts_mlabs_fpai(data, testing_dates, prediction_date, feature_space=[[]], hyperparemeter_space=[],
+                             growth='linear',
+                             events=None):
+    results = []
+    for features in feature_space:
+        for yo in hyperparemeter_space:
+            train_mapes = []
+            train_mape_stand_devs = []
+            train_feature_contributions = []
+            train_contribution_stand_devs = []
+            test_mapes = []
+            test_mape_stand_devs = []
+            growth_errors = []
+            for test_date in testing_dates:
+                train = data[data.ds < test_date].copy()
+                test = data[(data.ds >= test_date) & (data.ds < prediction_date)].copy()
+                future = data[data.ds >= prediction_date - pd.DateOffset(months=1)]
+                model = initialize_prophet_model(growth=growth)
+                model.holidays = events
+                model.add_seasonality('yearly', period=365.25, fourier_order=yo)
+                for f in features:
+                    model.add_regressor(f)
+                model.fit(train)
+
+                # train
+                train_pred = model.predict(train)
+                train_mape, train_mape_std, feature_contributions, contribution_std = calculate_metrics(train,
+                                                                                                        train_pred[
+                                                                                                            ['ds',
+                                                                                                             'yhat',
+                                                                                                             'trend',
+                                                                                                             'yearly',
+                                                                                                             *features]]
+                                                                                                        )
+                train_mapes.append(train_mape)
+                train_mape_stand_devs.append(train_mape_std)
+                train_feature_contributions.append(feature_contributions)
+                train_contribution_stand_devs.append(contribution_std)
+
+                # test
+                test_pred = model.predict(test)
+                test_mape, test_mape_std, _, _ = calculate_metrics(test, test_pred[
+                    ['ds', 'yhat', 'trend', 'yearly', *features]])
+                test_mapes.append(test_mape)
+                test_mape_stand_devs.append(test_mape_std)
+
+                # future
+                future_pred = model.predict(future)
+                future_growth = mom_growth(future_pred['yhat'])
+
+                # past-1-year growth
+                past_one_year_growth = np.array([])
+                past_one_year_dates = [d - pd.DateOffset(years=1) for d in future['ds']]
+                past_one_year = data[data.ds.isin(past_one_year_dates)].copy()
+                # print(len(past_one_year_dates),len(past_one_year))
+                if len(past_one_year_dates) == len(past_one_year):
+                    past_one_year_growth = mom_growth(past_one_year['y']).values
+
+                # 2 years before growth
+                past_two_year_growth = np.array([])
+                past_two_year_dates = [d - pd.DateOffset(years=2) for d in future['ds']]
+                past_two_year = data[data.ds.isin(past_two_year_dates)].copy()
+                # print((past_two_year_dates),past_two_year.ds)
+                # return
+                if len(past_two_year_dates) == len(past_two_year):
+                    past_two_year_growth = mom_growth(past_two_year['y']).values
+
+                # avg_past_growth = (past_two_year_growth + past_one_year_growth) / 2
+                #
+                # if len(avg_past_growth) == 0:
+                #     growth_error = 0.
+                # else:
+                #     # print(avg_past_growth, future_growth)
+                #     # growth_error = np.sqrt(mean_squared_error(avg_past_growth[1:], future_growth[1:]))
+                #     growth_error = 0.
+                growth_error = 0.
+
+                growth_errors.append(growth_error)
+
+            results.append({
+                'features': features,
+                'yo': yo,
+                'avg_train_mape': np.mean(train_mapes),
+                'avg_train_mape_dev': np.mean(train_mape_stand_devs),
+                'avg_train_contribution_dev': np.mean(train_contribution_stand_devs),
+                'avg_test_mape': np.mean(test_mapes),
+                'avg_test_mape_dev': np.mean(test_mape_stand_devs),
+                'avg_growth_error': np.mean(growth_errors),
+                'train_mapes': train_mapes,
+                'train_mape_stand_devs': train_mape_stand_devs,
+                'train_feature_contributions': train_feature_contributions,
+                'train_contribution_stand_devs': train_contribution_stand_devs,
+                'test_mapes': test_mapes,
+                'test_mape_stand_devs': test_mape_stand_devs,
+                'growth_errors': growth_errors,
+                # 'future_predictions' : future_pred.iloc[1:],
+                # 'train_predictions'
+            })
+    return pd.DataFrame(results)
+
+
+# def fit_model_fpai(data, testing_dates, prediction_date, feature_space=[[]], hyperparemeter_space=[], growth='linear',
+#               events=None):
+#     results = []
+#     for features in feature_space:
+#         for yo in hyperparemeter_space:
+#             train_mapes = []
+#             train_mape_stand_devs = []
+#             train_feature_contributions = []
+#             train_contribution_stand_devs = []
+#             test_mapes = []
+#             test_mape_stand_devs = []
+#             growth_errors = []
+#             for test_date in testing_dates:
+#                 train = data[data.ds < test_date].copy()
+#                 test = data[(data.ds >= test_date) & (data.ds < prediction_date)].copy()
+#                 future = data[data.ds >= prediction_date - pd.DateOffset(months=1)]
+#                 model = initialize_prophet_model(growth=growth)
+#                 model.holidays = events
+#
+#                 model.add_seasonality('yearly', period=365.25, fourier_order=yo)
+#                 for f in features:
+#                     model.add_regressor(f)
+#                 model.fit(train)
+#
+#                 # train
+#                 train_pred = model.predict(train)
+#                 train_mape, train_mape_std, feature_contributions, contribution_std = calculate_metrics(train,
+#                                                                                                         train_pred[
+#                                                                                                             ['ds',
+#                                                                                                              'yhat',
+#                                                                                                              'trend',
+#                                                                                                              'yearly',
+#                                                                                                              *features]]
+#                                                                                                         )
+#                 train_mapes.append(train_mape)
+#                 train_mape_stand_devs.append(train_mape_std)
+#                 train_feature_contributions.append(feature_contributions)
+#                 train_contribution_stand_devs.append(contribution_std)
+#
+#                 # test
+#                 test_pred = model.predict(test)
+#                 test_mape, test_mape_std, _, _ = calculate_metrics(test, test_pred[
+#                     ['ds', 'yhat', 'trend', 'yearly', *features]])
+#                 test_mapes.append(test_mape)
+#                 test_mape_stand_devs.append(test_mape_std)
+#
+#                 # future
+#                 future_pred = model.predict(future)
+#                 future_growth = mom_growth(future_pred['yhat'])
+#
+#                 # past-1-year growth
+#                 past_one_year_growth = np.array([])
+#                 past_one_year_dates = [d - pd.DateOffset(years=1) for d in future['ds']]
+#                 past_one_year = data[data.ds.isin(past_one_year_dates)].copy()
+#                 # print(len(past_one_year_dates),len(past_one_year))
+#                 if len(past_one_year_dates) == len(past_one_year):
+#                     past_one_year_growth = mom_growth(past_one_year['y']).values
+#
+#                 # 2 years before growth
+#                 past_two_year_growth = np.array([])
+#                 past_two_year_dates = [d - pd.DateOffset(years=2) for d in future['ds']]
+#                 past_two_year = data[data.ds.isin(past_two_year_dates)].copy()
+#                 # print((past_two_year_dates),past_two_year.ds)
+#                 # return
+#                 if len(past_two_year_dates) == len(past_two_year):
+#                     past_two_year_growth = mom_growth(past_two_year['y']).values
+#
+#                 # avg_past_growth = (past_two_year_growth + past_one_year_growth) / 2
+#                 avg_past_growth = []
+#                 if len(avg_past_growth) == 0:
+#                     growth_error = 0.
+#                 else:
+#                     # print(avg_past_growth, future_growth)
+#                     # growth_error = np.sqrt(mean_squared_error(avg_past_growth[1:], future_growth[1:]))
+#                     growth_error = 0.
+#
+#                 growth_errors.append(growth_error)
+#
+#             results.append({
+#                 'features': features,
+#                 'yo': yo,
+#                 'avg_train_mape': np.mean(train_mapes),
+#                 'avg_train_mape_dev': np.mean(train_mape_stand_devs),
+#                 'avg_train_contribution_dev': np.mean(train_contribution_stand_devs),
+#                 'avg_test_mape': np.mean(test_mapes),
+#                 'avg_test_mape_dev': np.mean(test_mape_stand_devs),
+#                 'avg_growth_error': np.mean(growth_errors),
+#                 'train_mapes': train_mapes,
+#                 'train_mape_stand_devs': train_mape_stand_devs,
+#                 'train_feature_contributions': train_feature_contributions,
+#                 'train_contribution_stand_devs': train_contribution_stand_devs,
+#                 'test_mapes': test_mapes,
+#                 'test_mape_stand_devs': test_mape_stand_devs,
+#                 'growth_errors': growth_errors,
+#                 # 'future_predictions' : future_pred.iloc[1:],
+#                 # 'train_predictions'
+#             })
+#     return pd.DataFrame(results)
+
+
+def analyze_results_dsx_emea(result_df):
+    result_df['train_score'] = (
+            (result_df['avg_train_mape'] / result_df['avg_test_mape'] > 10) & result_df['avg_train_mape'] >= 5).map(
+        {True: 10, False: 0})
+    for col in ['avg_test_mape', 'avg_test_mape_dev', 'avg_growth_error']:
+        power = np.ceil(np.log(result_df[col].quantile(0.25)) / np.log(10))
+        result_df[f'{col}_standardized'] = result_df[col] / 10 ** power
+    result_df['final_score'] = result_df['train_score'] + result_df['avg_train_contribution_dev'] + \
+                               result_df['avg_test_mape_standardized']
+    # + result_df['avg_growth_error_standardized']
+    columns = result_df.drop('final_score', axis=1).columns
+    return result_df[['final_score', *columns]].sort_values(by='final_score')
+
+
+def analyze_results_bts_mlabs_fpai(result_df):
+    result_df['train_score'] = (
+            (result_df['avg_train_mape'] / result_df['avg_test_mape'] > 10) & result_df['avg_train_mape'] >= 5).map(
+        {True: 10, False: 0})
+    for col in ['avg_test_mape', 'avg_test_mape_dev']:  # removed avg_growth_error
+        power = np.ceil(np.log(result_df[col].quantile(0.25)) / np.log(10))
+        result_df[f'{col}_standardized'] = result_df[col] / 10 ** power
+    result_df['final_score'] = result_df['train_score'] + result_df['avg_train_contribution_dev'] + \
+                               result_df['avg_test_mape_standardized']
+    # + result_df['avg_growth_error_standardized']
+    columns = result_df.drop('final_score', axis=1).columns
+    return result_df[['final_score', *columns]].sort_values(by='final_score')
+
+
 def lambda_handler(event, context):
     bu = event['bu']
+    print("BU: ", bu)
     user = event['user']
     model_name = event['model_name']
     request_id = event['request_id']
@@ -521,7 +740,7 @@ def lambda_handler(event, context):
         'start_date': datetime.now().astimezone(pytz.timezone('GMT')),
         'status': 'initiated',
         'user': user,
-        'failure_reason': None
+        # 'failure_reason': None
     }
     insert_experiments_data_to_db(model_info_dict)
 
@@ -529,12 +748,14 @@ def lambda_handler(event, context):
     rev_data = fetch_revenue_data_from_db()
     rev_data = preprocess(rev_data)
     latest_actual_bu_date_time = rev_data[rev_data['business_unit'] == bu].ds.max()
-    holiday_dates, final_df, test_dates = {
-        'dsx': dsx_method,
-        'bts': bts_method,
-        'emea': emea_method,
-        'mlabs': mlabs_method,
-        'fpai': fpai_method}[bu](rev_data, exo_df)
+    bu_methods_dict = {
+        'dsx': [dsx_method, fit_model_dsx_emea, analyze_results_dsx_emea],
+        'emea': [emea_method, fit_model_dsx_emea, analyze_results_dsx_emea],
+        'bts': [bts_method, fit_model_bts_mlabs_fpai, analyze_results_bts_mlabs_fpai],
+        'mlabs': [mlabs_method, fit_model_bts_mlabs_fpai, analyze_results_bts_mlabs_fpai],
+        'fpai': [fpai_method, fit_model_bts_mlabs_fpai, analyze_results_bts_mlabs_fpai]
+    }
+    holiday_dates, final_df, test_dates = bu_methods_dict[bu][0](rev_data, exo_df)
 
     ## TRAINING
     growth = 'linear'
@@ -542,14 +763,14 @@ def lambda_handler(event, context):
     if bu == 'fpai':
         growth = 'flat'
         features = ['year']
-    results = fit_model(data=final_df,
-                        testing_dates=test_dates,
-                        prediction_date=latest_actual_bu_date_time + pd.DateOffset(months=1),
-                        hyperparemeter_space=range(1, 15),
-                        events=holiday_dates,
-                        feature_space=[features],
-                        growth=growth)
-    results = analyze_results(results).reset_index(drop=True)
+    results = bu_methods_dict[bu][1](data=final_df,
+                                     testing_dates=test_dates,
+                                     prediction_date=latest_actual_bu_date_time + pd.DateOffset(months=1),
+                                     hyperparemeter_space=range(1, 15),
+                                     events=holiday_dates,
+                                     feature_space=[features],
+                                     growth=growth)
+    results = bu_methods_dict[bu][2](results).reset_index(drop=True)
     best_model_dict = results.iloc[0].to_dict()
     res_dict = {'BU': bu, 'request_id': request_id, 'results': best_model_dict}
     print(res_dict)

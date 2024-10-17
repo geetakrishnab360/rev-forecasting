@@ -26,10 +26,10 @@ st.set_page_config(layout="wide", page_title="Forecast Results", initial_sidebar
 hide_sidebar()
 page = option_menu(
     menu_title=None,
-    options=["Pipeline Analysis", "Pipeline Forecast", "TopDown Forecast"],
+    options=["Pipeline Analysis", "Pipeline Forecast", "TopDown Forecast", "Netsuite Revenue"],
     default_index=1,
     orientation="horizontal",
-    icons=["bar-chart-line-fill", "graph-up-arrow", "graph-up-arrow"],
+    icons=["bar-chart-line-fill", "graph-up-arrow", "graph-up-arrow", "database"],
     styles={
         "container": {
             # "background-color": "black",
@@ -58,6 +58,8 @@ if page == 'Pipeline Analysis':
     st.switch_page("Analysis.py")
 if page == 'TopDown Forecast':
     st.switch_page("pages/2_TopDown.py")
+if page == 'Netsuite Revenue':
+    st.switch_page("pages/3_Netsuite-Revenue.py")
 set_header("Forecasting Simulation - Pipeline Analysis")
 
 

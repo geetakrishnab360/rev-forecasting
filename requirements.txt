@@ -10,3 +10,9 @@ python-dateutil==2.9.0post0
 scikit-learn==1.4.2
 xlsxwriter==3.1.1
 pytz==2024.1
+fuzzywuzzy==0.18.0
+openpyxl==3.1.2
+simplejson==3.19.3
+unidecode==1.2.0
+pyxlsb==1.0.10
+boto3==1.35.30

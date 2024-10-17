@@ -43,11 +43,9 @@ warnings.filterwarnings("ignore")
 
 aws_access_key_id = xxxxx
 aws_secret_access_key = xxxxx
-aws_session_token = xxxxx
 session = boto3.Session(
     aws_access_key_id=aws_access_key_id,
     aws_secret_access_key=aws_secret_access_key,
-    aws_session_token=aws_session_token,
     region_name='us-east-1'
 )
 lambda_client = session.client('lambda')
@@ -86,10 +84,10 @@ st.set_page_config(layout="wide", page_title="Top Down", initial_sidebar_state="
 hide_sidebar()
 page = option_menu(
     menu_title=None,
-    options=["Pipeline Analysis", "Pipeline Forecast", "TopDown Forecast"],
+    options=["Pipeline Analysis", "Pipeline Forecast", "TopDown Forecast", "Netsuite Revenue"],
     default_index=2,
     orientation="horizontal",
-    icons=["bar-chart-line-fill", "graph-up-arrow", "graph-up-arrow"],
+    icons=["bar-chart-line-fill", "graph-up-arrow", "graph-up-arrow", "database"],
     styles={
         "container": {
             # "background-color": "black",
@@ -118,6 +116,8 @@ if page == 'Pipeline Analysis':
     st.switch_page("Analysis.py")
 if page == 'Pipeline Forecast':
     st.switch_page("pages/1_Forecast_Results.py")
+if page == 'Netsuite Revenue':
+    st.switch_page("pages/3_Netsuite-Revenue.py")
 set_header("Top Down Forecasting")
 
 load_dotenv()
@@ -313,10 +313,17 @@ with left_pane:
                 )
             )
         fig.update_layout(
-            title=f"{st.session_state['bu_graph_selected']} Business Units Graph",
+            title=f"{st.session_state['bu_graph_selected'].upper() if st.session_state['bu_graph_selected'] != 'Overall' else 'Overall'} Business Units Graph",
             xaxis_title='Date',
             yaxis_title='Value',
-            legend_title='Business Units'
+            legend_title='Business Units',
+            legend=dict(
+                orientation="h",  # Horizontal orientation
+                yanchor="bottom",  # Anchoring the bottom of the legend box
+                y=-0.5,  # Positioning slightly above the x-axis (slightly above 1)
+                xanchor="center",  # Centering the legend horizontally
+                x=0.5  # Positioning at the center of the graph
+            )
         )
 
         st.plotly_chart(fig)
@@ -444,11 +451,10 @@ with left_pane:
 
             st.plotly_chart(fig)
 
-    # if not st.session_state['is_train']:
-    #     st.stop()
-    st.session_state['user'] = 'test_all_2'
+    st.text_input('Enter your name', key='user')
     if 'is_train' not in st.session_state:
         st.session_state['is_train'] = False
+
     if st.button('Train Models'):
         st.session_state['experiment_id'] = train_models(st.session_state['user'])
         st.session_state['is_train'] = True
@@ -479,7 +485,7 @@ with left_pane:
                           index=[3, 6, 9, 12].index(st.session_state['forecast_months']),
                           on_change=record_changes, args=('forecast_months', 'forecast_monthss'))
         if 'selected_models' not in st.session_state:
-            st.session_state['selected_models'] = fetched_data['experiment_id'].unique().tolist()
+            st.session_state['selected_models'] = [fetched_data['experiment_id'].unique().tolist()[-1]]
         cols[2].multiselect('Select models', options=fetched_data['experiment_id'].unique().tolist(),
                             key='selected_modelss',
                             default=st.session_state['selected_models'],
@@ -567,16 +573,26 @@ with left_pane:
                     )
                 )
         fig.update_layout(
-            title=f"{st.session_state['bu_forecast_selected']} Business Units Forecast Graph",
+            title=f"{st.session_state['bu_forecast_selected'].upper() if st.session_state['bu_forecast_selected']!='Overall' else 'Overall'} Business Units Forecast Graph",
             xaxis_title='Date',
             yaxis_title='Value',
-            legend_title='Business Units'
+            legend_title='Business Units',
+            legend=dict(
+                orientation="h",  # Horizontal orientation
+                yanchor="bottom",  # Anchoring the bottom of the legend box
+                y=-0.5,  # Positioning slightly above the x-axis (slightly above 1)
+                xanchor="center",  # Centering the legend horizontally
+                x=0.5  # Positioning at the center of the graph
+            )
         )
 
         st.plotly_chart(fig)
         if st.button('Refresh Forecast'):
             st.session_state['fetch_forecast_data'] = fetch_forecast_data()
-            st.session_state['selected_models'] = st.session_state['fetch_forecast_data']['EXPERIMENT_ID'].unique().tolist()
+            st.session_state['selected_models'] = st.session_state['fetch_forecast_data'][
+                'EXPERIMENT_ID'].unique().tolist()[-1:]
+            st.rerun()
+
         st.divider()
 
         st.header('Forecast Data')
