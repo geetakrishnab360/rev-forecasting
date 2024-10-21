@@ -87,8 +87,8 @@ def prepare_actual_rev_data():
 
 def convert_to_cohort_df(experiemnt_df):
     # print("******************Experiment df******************")
+    # print(experiemnt_df)
     experiemnt_df.columns = [col.lower() for col in experiemnt_df.columns]
-    print(experiemnt_df)
     features = experiemnt_df["columns"].str.split(
         "|",
         expand=True,

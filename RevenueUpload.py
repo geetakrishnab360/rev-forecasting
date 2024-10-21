@@ -6,7 +6,6 @@ import re
 import difflib
 import unidecode
 from dotenv import load_dotenv
-from numba.np.npdatetime import datetime_fmax_impl
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Color
 from openpyxl.utils import get_column_letter
