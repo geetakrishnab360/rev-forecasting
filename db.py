@@ -2,6 +2,17 @@ import sqlite3
 import os
 import pandas as pd
 import streamlit as st
+import snowflake.connector as connector
+
+
+def create_snowflake_connection():
+    conn = connector.connect(
+        user='forecasting_app_service_account',
+        account='c2gpartners.us-east-1',
+        password='B!_ForecastApp2024',
+        warehouse='POWERHOUSE',
+    )
+    return conn
 
 
 def insert_experiment_into_db(
@@ -27,11 +38,12 @@ def insert_experiment_into_db(
             selected,
         )
     )
-    sql_query = f"""INSERT INTO cohorts VALUES {','.join(['(' + ','.join([
+    sql_query = f"""INSERT INTO DSX_DASHBOARDS_SANDBOX.FORECASTING_TOOL.COHORTS VALUES {','.join(['(' + ','.join([
         f"'{c}'" if isinstance(c, str) else str(c) for c in v]) + ')' for v in values])}"""
 
     # print(sql_query)
-    conn = sqlite3.connect(os.environ["DB_NAME"])
+    # conn = sqlite3.connect(os.environ["DB_NAME"])
+    conn = create_snowflake_connection()
     c = conn.cursor()
     c.execute(sql_query)
     conn.commit()
@@ -51,32 +63,33 @@ def convert_to_df(func):
     return __wrapper__
 
 
-def create_database():
-    conn = sqlite3.connect(os.environ["DB_NAME"])
-    c = conn.cursor()
-    c.execute(
-        """
-            CREATE TABLE IF NOT EXISTS cohorts(
-                user varchar(100) not null,
-                experiment varchar(50) not null,
-                rank int not null,
-                columns varchar(1000) not null,
-                probabilities real not null,
-                selected boolean not null
-            );
-            """
-    )
-    conn.commit()
-    conn.close()
+# def create_database():
+#     conn = sqlite3.connect(os.environ["DB_NAME"])
+#     c = conn.cursor()
+#     c.execute(
+#         """
+#             CREATE TABLE IF NOT EXISTS cohorts(
+#                 user varchar(100) not null,
+#                 experiment varchar(50) not null,
+#                 rank int not null,
+#                 columns varchar(1000) not null,
+#                 probabilities real not null,
+#                 selected boolean not null
+#             );
+#             """
+#     )
+#     conn.commit()
+#     conn.close()
 
 
 @convert_to_df
 def fetch_experiment(user, experiment):
-    conn = sqlite3.connect(os.environ["DB_NAME"])
+    # conn = sqlite3.connect(os.environ["DB_NAME"])
+    conn = create_snowflake_connection()
     c = conn.cursor()
     c.execute(
         f"""
-              SELECT rank, columns, probabilities, selected FROM cohorts
+              SELECT rank, columns, probabilities, selected FROM DSX_DASHBOARDS_SANDBOX.FORECASTING_TOOL.COHORTS
               WHERE user = '{user}'
               AND experiment = '{experiment}'
               ORDER BY 1 ASC
@@ -86,11 +99,12 @@ def fetch_experiment(user, experiment):
 
 
 def fetch_all_experiments(user):
-    conn = sqlite3.connect(os.environ["DB_NAME"])
+    # conn = sqlite3.connect(os.environ["DB_NAME"])
+    conn = create_snowflake_connection()
     c = conn.cursor()
     c.execute(
         f"""
-              SELECT distinct experiment as experiment FROM cohorts
+              SELECT distinct experiment as experiment FROM DSX_DASHBOARDS_SANDBOX.FORECASTING_TOOL.COHORTS
               WHERE user = '{user}'
               """
     )

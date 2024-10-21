@@ -1,8 +1,6 @@
 import snowflake.connector as connector
 import pandas as pd
 import streamlit as st
-from nltk.sem.chat80 import sql_query
-
 
 def create_snowflake_connection():
     conn = connector.connect(
