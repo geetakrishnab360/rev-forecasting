@@ -5,8 +5,9 @@ import pandas as pd
 import snowflake.connector as connector
 import os
 import streamlit as st
-
-
+from snowflake.connector.pandas_tools import write_pandas
+from dotenv import load_dotenv
+load_dotenv()
 # # @st.cache_resource()
 # def create_snowflake_connection(user, role):
 #     return connector.connect(
@@ -16,6 +17,31 @@ import streamlit as st
 #         warehouse=os.environ["SNOWFLAKE_WAREHOUSE"],
 #         role=role,
 #     )
+
+def execute_snowflake_query(sql_query):
+    try:
+        conn = create_snowflake_connection()
+        cur = conn.cursor()
+        res = cur.execute(sql_query)
+        conn.commit()
+        conn.close()
+        return res.fetchone()[0]
+    except Exception as e:
+        print(e)
+        pass
+    finally:
+        if conn:    
+            conn.close()
+
+def insert_data_to_snowflake(df, table_name):
+    try:
+        conn = create_snowflake_connection()
+        write_pandas(conn, df, table_name, database=os.environ["SNOWFLAKE_DATABASE"], schema=os.environ["SNOWFLAKE_SCHEMA"])
+    except Exception as e:
+        st.error(e)
+    finally:
+        if conn:
+            conn.close()
 
 def create_snowflake_connection():
     con = connector.connect(
@@ -27,15 +53,16 @@ def create_snowflake_connection():
     return con
 
 
-def convert_period_to_dates(duration):
-    today = datetime.now().date()
-    end_month = today - timedelta(today.day - 1) - relativedelta(months=4)
+def convert_period_to_dates(date,duration):
+    today = date or datetime.now().date()
+    end_month = today - relativedelta(days=1)
     start_month = end_month - relativedelta(months=duration - 1)
+    print(start_month, end_month)
     return start_month, end_month
 
 
 def convert_dates_to_string(start_date, end_date):
-    end_date = end_date + relativedelta(months=1)
+    # end_date = end_date + relativedelta(months=1)
     return ",".join(
         [
             f"""'{date.strftime("%Y-%m-%d")}'"""
@@ -50,7 +77,7 @@ def get_end_of_month(year, month):
     # print(f"[INFO] Last date of the month: {last_date}")
     return last_date
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=True)
 def fetch_data_from_db(dates, later=True):
     print("[INFO] fetching data from SNOWFLAKE")
     sql_query = f"""

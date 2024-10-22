@@ -36,9 +36,14 @@ from snowflake_utils import (
     get_end_of_month,
     fetch_data_from_db,
     fetch_weightages,
+    execute_snowflake_query
 )
 
 warnings.filterwarnings("ignore")
+
+def fetch_max_revenue_data():
+    rev_date =  execute_snowflake_query("SELECT MAX(DATE) FROM DSX_DASHBOARDS_SANDBOX.FORECASTING_TOOL.actual_revenues")
+    return rev_date
 
 st.set_page_config(layout="wide", page_title="Blend Forecasting", initial_sidebar_state="collapsed")
 hide_sidebar()
@@ -81,7 +86,7 @@ if page == 'TopDown Forecast':
 set_header("Forecasting Simulation - Pipeline Analysis")
 
 load_dotenv()
-prepare_actual_rev_data()
+
 # create_database()
 
 
@@ -141,7 +146,7 @@ def fetch_and_forecast_experiment(experiment_name):
 
     _df = temp.copy()
     forecast_results = calculate_forecasts(
-        _df, ["final_probability"], ["amount"], st.session_state['actual_max_date_str']
+        _df, ["final_probability"], ["amount"], st.session_state['end_date']
     )
 
     st.session_state["forecast_results"][
@@ -180,15 +185,19 @@ def pull_data():
                 for date in pd.date_range(start_date, end_date, freq="M")
             ])
     else:
-        start_date, end_date = convert_period_to_dates(
+        start_date, end_date = convert_period_to_dates(st.session_state['actual_max_date_str'],
             st.session_state.get("data_period", 6)
         )
         st.session_state["dates_string"] = convert_dates_to_string(start_date, end_date)
+    
+    st.session_state['end_date'] = end_date + pd.DateOffset(days=1)
     data = fetch_data_from_db(st.session_state["dates_string"])
-
+    
     st.session_state["hubspot_id_dict"], st.session_state["data_df"] = (
         preprocess(data)
     )
+    
+    prepare_actual_rev_data(end_date)
 
     if "forecast_results" in st.session_state:
         del st.session_state["forecast_results"]
@@ -255,7 +264,7 @@ def cohort_generate_forecast():
         st.session_state["active_df"],
         ["final_probability"],
         ["amount"],
-        st.session_state["actual_max_date_str"],
+        st.session_state['end_date'],
     )
     # for key, value in forecast_results.items():
     #     st.write(key)
@@ -348,7 +357,7 @@ def cohorts_update(selected_features):
     data_df = data_df[data_df["deal_probability"] == data_df["effective_probability"]]
 
     # Create cohorts based on selected features
-    cohort_df = data_df[selected_features].drop_duplicates().reset_index(drop=True)
+    cohort_df = data_df[selected_features].drop_duplicates().reset_index(drop=True).sort_values(by=selected_features)
     num_cohorts = cohort_df.shape[0]
     cohort_df["cohort"] = [f"cohort {i + 1}" for i in range(num_cohorts)]
 
@@ -419,9 +428,11 @@ def calculate_current_vs_act_error(eff_probabilities, temp, cohorts, actuals):
     for d in temp.snapshot_month.unique():
         temp1 = temp[temp.snapshot_month == d].copy()
         forecast_results_sw = calculate_forecasts(temp1, ["final_probability"], ["amount"],
-                                                  st.session_state["actual_max_date_str"])
+                                                  st.session_state['end_date'])
         actuals_total = st.session_state["actual_df"][
-            (st.session_state["actual_df"].hubspot_id.isin(forecast_results_sw[d].record_id)) & (
+            (st.session_state["actual_df"].hubspot_id.isin(
+                forecast_results_sw[d].record_id
+                )) & (
                     st.session_state["actual_df"].date >= d)].copy()
         actuals_ = actuals_total.groupby(['hubspot_id']).amount.sum().reset_index().copy()
         avg_forecasts = forecast_results_sw[d].groupby(['record_id']).amount.sum().reset_index()
@@ -434,9 +445,10 @@ def calculate_current_vs_act_error(eff_probabilities, temp, cohorts, actuals):
                                                                    right_on='record_id').groupby(
                 'cohort')['diff'].sum()
         res.append(np.power(actual_cohort.values, 2).mean())
-
+    
+    # return
     forecast_results = calculate_forecasts(temp, ["final_probability"], ["amount"],
-                                           st.session_state["actual_max_date_str"])
+                                          st.session_state['end_date'])
     st.session_state["forecast_results"]["Current"] = forecast_results.copy()
     return np.mean(res) / 1e12
     # # return np.mean(abs(1 - total_forecasts / actuals))
@@ -505,19 +517,35 @@ def optimize_eff_probability(max_iter, progress_bar, progress_text):
         progress_callback.iteration += 1
 
     progress_callback.iteration = 0
+    
+    def constraint_1(p):
+        return p[1] - p[0]
 
+    def constraint_2(p):
+        return p[2] - p[1]
+
+    def constraint_3(p):
+        return p[3] - p[2]
+
+    # Constraints must be in the form of a dictionary
+    constraints = [
+        {'type': 'ineq', 'fun': constraint_1},  # p[1] - p[0] > 0
+        {'type': 'ineq', 'fun': constraint_2},  # p[2] - p[1] > 0
+        {'type': 'ineq', 'fun': constraint_3}   # p[3] - p[2] > 0
+    ]# p[1] - p[0] > 0
+   
     result = minimize(
         calculate_current_vs_act_error,
         initial_guess,
         bounds=bounds,
-        method="L-BFGS-B",
+        method="SLSQP",
         options={"maxiter": max_iter,
-                 "ftol": 1e-6,
-                 "disp": False},
+                 "ftol": 1e-8,
+                 "disp": True},
         callback=progress_callback,
         args=(temp, cohorts, _actuals),
+        constraints=constraints
     )
-
     if result.success:
         optimized_eff_probabilities = result.x
         st.session_state["cohort_df"].loc[
@@ -534,7 +562,7 @@ def optimize_eff_probability(max_iter, progress_bar, progress_text):
             st.session_state["active_df"],
             ["final_probability"],
             ["amount"],
-            st.session_state["actual_max_date_str"],
+            st.session_state['end_date'],
         )
         st.session_state["forecast_results"]["Current"] = forecast_results.copy()
         st.session_state['cohort_information']['Current']['cohort_df'] = st.session_state["cohort_df"].copy()
@@ -572,6 +600,11 @@ with open("./styles.css") as f:
         f"<style>{f.read()}</style>",
         unsafe_allow_html=True,
     )
+
+if "actual_max_date_str" not in st.session_state:
+    st.session_state["actual_max_date_str"] = datetime(2024,8,1)
+    print(st.session_state["actual_max_date_str"])
+    
 
 if "cohort_df" not in st.session_state:
     st.session_state["cohort_df"] = pd.DataFrame()
@@ -618,7 +651,7 @@ if "forecast_results" not in st.session_state:
         st.session_state["data_df"],
         ["final_probability", "deal_probability"],
         ["amount_existing", "amount_default"],
-        st.session_state["actual_max_date_str"],
+        st.session_state['end_date'],
     )
 
     st.session_state["forecast_results"]["Existing Approach"] = (
@@ -889,7 +922,7 @@ with main_pane:
                 on_change=record_changes,
                 args=('max_iter', 'max_iterr')
             )
-        bcols=st.columns(5)
+        bcols=st.columns(3)
         with bcols[0]:
             if st.button(
                     "Optimize Probabilities",

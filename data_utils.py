@@ -9,7 +9,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-def prepare_actual_rev_data():
+def prepare_actual_rev_data(rev_date):
     actual_df = pd.read_excel(
         r"data/actuals.xlsx"
     )
@@ -22,6 +22,7 @@ def prepare_actual_rev_data():
         "2024-05-01",
         "2024-06-01",
         "2024-07-01",
+        "2024-08-01",
     ]
     actual_df = (
         actual_df.set_index("hubspot_id")[
@@ -33,6 +34,7 @@ def prepare_actual_rev_data():
                 "2024-05-01",
                 "2024-06-01",
                 "2024-07-01",
+                "2024-08-01",
             ]
         ]
         .stack()
@@ -40,6 +42,8 @@ def prepare_actual_rev_data():
         .rename(columns={"level_1": "date", 0: "amount"})
     )
     actual_df.date = pd.to_datetime(actual_df.date).dt.date
+    actual_df = actual_df[actual_df.date <= pd.to_datetime(pd.DateOffset(days=1) + rev_date).date()]
+    actual_df['hubspot_id'] = actual_df['hubspot_id'].astype(str)
     st.session_state["actual_df"] = actual_df.copy()
     # actuals = pd.read_excel('data/YTD 2024 Revenue.xlsx', sheet_name='Hubspot ID', skiprows=5, nrows=312)
     # actuals = actuals.rename(columns={'Entity (Line): HubSpot Deal ID': 'Hubspot ID'})
@@ -114,6 +118,7 @@ def convert_to_cohort_df(experiemnt_df):
 def preprocess(
         dataframe,
 ):
+    print("Running preprocess ...")
     def convert_columns_to_lower(df):
         df.columns = [col.lower() for col in df.columns]
         return df
@@ -209,7 +214,7 @@ def preprocess(
             df.pipeline.isin(
                 [
                     "Blend360 DSX Pipeline",
-                    "Blend360 BTS Pipeline",
+                    # "Blend360 BTS Pipeline",
                     "Blend360 Renewals",
                 ]
             )
@@ -260,14 +265,14 @@ def preprocess(
         add_snapshot_month,
         create_final_probability,
         drop_visa,
-        drop_na_start_dates,
         remove_non_dsx,
-        drop_zero_contract_value_deals,
+        
         create_dsx_renewals_column,
     ]
 
     _df = reduce(lambda _df, f: _df.pipe(f), preprocess_functions, dataframe)
     hubspot_ids = _df.groupby("snapshot_month").record_id.unique().to_dict()
+    _df = reduce(lambda __df, f: __df.pipe(f), [drop_na_start_dates,drop_zero_contract_value_deals,], _df)
     _df = _df.reset_index(drop=True)
     return hubspot_ids, _df
     # return hubspot_ids, reduce(
@@ -390,6 +395,7 @@ def _calculate_snapshot_monthly_number(date_string, experiment_name):
         datetime.strptime(d.replace("'", ""), "%Y-%m-%d").date()
         for d in date_string.split(",")
     ]
+    print(dates)
     # print(st.session_state["forecast_results"])
     if "forecast_results" in st.session_state:
         experiment_forecasts = st.session_state["forecast_results"].get(
@@ -401,7 +407,6 @@ def _calculate_snapshot_monthly_number(date_string, experiment_name):
                 forecast_df = experiment_forecasts[d].copy()
                 # st.write(forecast_df)
                 all_ids = st.session_state["hubspot_id_dict"][d]
-
                 _act = st.session_state["actual_df"][
                     st.session_state["actual_df"].hubspot_id.isin(all_ids)
                     & (st.session_state["actual_df"].date >= d)

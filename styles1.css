@@ -39,3 +39,36 @@ header {
     margin-top: 0;
     height: 100vh !important;
 }
+
+.instructions {
+    font-size: 10px !important;
+    background-color: #f0f2f6;
+    /* padding: 1rem; */
+    padding: 0.25rem 1rem;
+    border-radius: 10px;
+    margin: 0;
+    margin-bottom: 0.5rem;
+}
+
+.instructions h2 {
+    font-size: 1rem;
+}
+
+.instructions li,.instructions p {
+    font-size: 0.75rem !important;
+}
+
+.instructions p, .instructions ol {
+    margin: 0;
+    padding: 0;
+}
+
+.color1 {
+    background-color: #F1F3F5;
+}
+.color2 {
+    background-color: #F4F6F8 ;
+}
+.color3 {
+    background-color: #F7F9FA ;
+}
